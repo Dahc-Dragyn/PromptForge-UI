@@ -1,8 +1,8 @@
 // src/app/sandbox/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import CopyableOutput from '@/components/CopyableOutput';
 
@@ -13,22 +13,22 @@ type PromptVariation = {
 
 const API_BASE_URL = 'https://db4f-24-22-90-227.ngrok-free.app/api/promptforge/sandbox/';
 
-// --- CHANGE 1: Define the list of available models ---
 const AVAILABLE_MODELS = [
   { id: 'gemini-2.0-flash-lite-001', name: 'Google Gemini Flash' },
   { id: 'gpt-4.1-nano', name: 'OpenAI GPT-4.1 Nano' },
 ];
 
-const SandboxPage = () => {
+// Inner component to handle logic that depends on search params
+function SandboxContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [prompts, setPrompts] = useState<PromptVariation[]>([
     { id: 'v1', text: '' },
     { id: 'v2', text: '' },
   ]);
   
-  // --- CHANGE 2: Set the default model from our list ---
   const [model, setModel] = useState(AVAILABLE_MODELS[0].id);
   const [inputText, setInputText] = useState('');
   
@@ -41,6 +41,18 @@ const SandboxPage = () => {
       router.push('/login');
     }
   }, [user, authLoading, router]);
+
+  // FIX: This useEffect now correctly reads the prompt from the URL on page load
+  useEffect(() => {
+    const promptFromUrl = searchParams.get('prompt');
+    if (promptFromUrl) {
+      const decodedPrompt = decodeURIComponent(promptFromUrl);
+      setPrompts([
+        { id: 'v1', text: decodedPrompt },
+        { id: 'v2', text: '' }
+      ]);
+    }
+  }, [searchParams]);
 
   const handlePromptTextChange = (index: number, newText: string) => {
     const updatedPrompts = [...prompts];
@@ -63,13 +75,11 @@ const SandboxPage = () => {
     setResults([]);
 
     const payload = {
-      prompts: prompts,
+      prompts: prompts.filter(p => p.text.trim() !== ''),
       input_text: inputText,
       model: model,
     };
     
-    console.log('Sending Payload to API:', JSON.stringify(payload, null, 2));
-
     try {
       const response = await fetch(API_BASE_URL, {
         method: 'POST',
@@ -126,7 +136,6 @@ const SandboxPage = () => {
             </div>
             <div>
               <label htmlFor="model" className="block text-sm font-medium text-gray-700 mb-1">Model for Testing</label>
-              {/* --- CHANGE 3: Replace the text input with a select dropdown --- */}
               <select
                 id="model"
                 value={model}
@@ -161,6 +170,13 @@ const SandboxPage = () => {
       </div>
     </div>
   );
-};
+}
+
+// Wrap the component in Suspense for Next.js to handle the search params
+const SandboxPage = () => (
+  <Suspense fallback={<div>Loading...</div>}>
+    <SandboxContent />
+  </Suspense>
+);
 
 export default SandboxPage;

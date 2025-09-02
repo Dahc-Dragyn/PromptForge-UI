@@ -1,7 +1,8 @@
+// src/app/analyze/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import CopyableOutput from '@/components/CopyableOutput';
 import DiagnoseResult from '@/components/DiagnoseResult';
@@ -11,9 +12,11 @@ const API_BASE_URL = 'https://db4f-24-22-90-227.ngrok-free.app/api/promptforge/p
 
 type Example = { input: string; output: string; };
 
-const AnalyzePage = () => {
+function AnalyzeContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [activeTool, setActiveTool] = useState<'simple' | 'optimize'>('simple');
   const [promptText, setPromptText] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
@@ -28,6 +31,37 @@ const AnalyzePage = () => {
   useEffect(() => {
     if (!authLoading && !user) router.push('/login');
   }, [user, authLoading, router]);
+  
+  // This useEffect now correctly reads the prompt and tool from the URL on page load
+  useEffect(() => {
+    const promptFromUrl = searchParams.get('prompt');
+    const toolFromUrl = searchParams.get('tool');
+
+    if (promptFromUrl) {
+      const decodedPrompt = decodeURIComponent(promptFromUrl);
+      // Set both state variables so the text persists when switching tabs
+      setPromptText(decodedPrompt);
+      setTaskDescription(decodedPrompt);
+    }
+    
+    // If the tool is specified as 'optimize', switch to that tab
+    if (toolFromUrl === 'optimize') {
+      setActiveTool('optimize');
+    }
+
+  }, [searchParams]);
+
+  // Handler to switch tools while preserving text
+  const handleToolSwitch = (tool: 'simple' | 'optimize') => {
+    if (activeTool === 'simple' && tool === 'optimize') {
+      setTaskDescription(promptText); // Copy text over
+    } else if (activeTool === 'optimize' && tool === 'simple') {
+      setPromptText(taskDescription); // Copy text back
+    }
+    setActiveTool(tool);
+    setOutput(null); 
+    setError(null);
+  };
 
   const handleAddExample = () => {
     if (currentExample.input && currentExample.output) {
@@ -81,8 +115,8 @@ const AnalyzePage = () => {
         <p className="text-gray-400 text-center mb-8">A collection of powerful tools to debug, deconstruct, and improve your prompts.</p>
         
         <div className="flex justify-center bg-gray-800 rounded-lg p-2 gap-2 mb-8">
-          <button onClick={() => setActiveTool('simple')} className={`w-full py-3 rounded-md font-semibold transition-colors ${activeTool === 'simple' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-gray-700'}`}>Diagnose & Breakdown</button>
-          <button onClick={() => setActiveTool('optimize')} className={`w-full py-3 rounded-md font-semibold transition-colors ${activeTool === 'optimize' ? 'bg-green-600 text-white' : 'bg-transparent text-gray-300 hover:bg-gray-700'}`}>Optimize (APE)</button>
+          <button onClick={() => handleToolSwitch('simple')} className={`w-full py-3 rounded-md font-semibold transition-colors ${activeTool === 'simple' ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-300 hover:bg-gray-700'}`}>Diagnose & Breakdown</button>
+          <button onClick={() => handleToolSwitch('optimize')} className={`w-full py-3 rounded-md font-semibold transition-colors ${activeTool === 'optimize' ? 'bg-green-600 text-white' : 'bg-transparent text-gray-300 hover:bg-gray-700'}`}>Optimize (APE)</button>
         </div>
 
         <div className="bg-white text-black p-6 sm:p-8 rounded-lg shadow-2xl">
@@ -138,6 +172,12 @@ const AnalyzePage = () => {
       </div>
     </div>
   );
-};
+}
+
+const AnalyzePage = () => (
+  <Suspense fallback={<div>Loading...</div>}>
+    <AnalyzeContent />
+  </Suspense>
+);
 
 export default AnalyzePage;

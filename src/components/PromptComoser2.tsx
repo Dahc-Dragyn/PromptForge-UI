@@ -2,18 +2,21 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import Modal from './Modal';
-import CopyableOutput from './CopyableOutput';
+import QuickExecuteModal from './QuickExecuteModal'; // <-- Import the new component
 
 const API_COMPOSE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/templates/compose`;
 const API_PROMPTS_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/`;
-const API_RECOMMEND_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/templates/recommend`; // <-- NEW
+const API_EXECUTE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`;
 
 const STYLE_OPTIONS = [
-  "professional", "humorous", "academic", "Direct Instruction", "Scenario-Based", 
-  "Hypothetical Questions", "Comparative Analysis", "Problem-Solving", 
-  "Creative Writing", "Role-Playing", "Explanatory", "Debate", 
-  "Summarization", "Instructional", "Reflective", "Predictive", 
+  "professional", "humorous", "academic", "Direct Instruction", "Scenario-Based",
+  "Hypothetical Questions", "Comparative Analysis", "Problem-Solving",
+  "Creative Writing", "Role-Playing", "Explanatory", "Debate",
+  "Summarization", "Instructional", "Reflective", "Predictive",
   "Analytical", "Interactive Dialogue"
 ];
 
@@ -23,10 +26,12 @@ interface PromptComposerProps {
 }
 
 const findPrimaryTag = (template: any, category: string) => {
+  if (!template || !template.tags) return '';
   return template.tags.find((tag: string) => tag !== category) || template.name;
 };
 
 const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
+  const router = useRouter();
   const [selectedPersona, setSelectedPersona] = useState('');
   const [selectedTask, setSelectedTask] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('');
@@ -35,18 +40,26 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyText, setCopyText] = useState('Copy');
-  
-  // --- NEW: State for the AI Assistant ---
   const [recommendationGoal, setRecommendationGoal] = useState('');
   const [isRecommending, setIsRecommending] = useState(false);
+  const [aiSuggestedPersona, setAiSuggestedPersona] = useState('');
+  const [aiSuggestedTask, setAiSuggestedTask] = useState('');
+  const [showSuggestionUI, setShowSuggestionUI] = useState(false);
+  const [isSavePromptModalOpen, setIsSavePromptModalOpen] = useState(false);
+  const [newPromptName, setNewPromptName] = useState('');
+  const [newPromptDescription, setNewPromptDescription] = useState('');
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+  const [isSaveTemplatesModalOpen, setIsSaveTemplatesModalOpen] = useState(false);
+  const [newPersonaName, setNewPersonaName] = useState('');
+  const [newTaskName, setNewTaskName] = useState('');
+  const [isSavingPersona, setIsSavingPersona] = useState(false);
+  const [isSavingTask, setIsSavingTask] = useState(false);
+  const [personaSaved, setPersonaSaved] = useState(false);
+  const [taskSaved, setTaskSaved] = useState(false);
 
-  // All state for the save button and modal is preserved
-  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
+  // ADDED: State for the Quick Execute Modal
+  const [isExecuteModalOpen, setIsExecuteModalOpen] = useState(false);
 
-  // This useEffect correctly implements the "Style" feature workaround
   useEffect(() => {
     if (selectedStyle) {
       setAdditionalInstructions(prev => {
@@ -56,15 +69,26 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
       });
     }
   }, [selectedStyle]);
+  
+  useEffect(() => {
+    if (showSuggestionUI) {
+      const finalPrompt = `${aiSuggestedPersona}\n\n${aiSuggestedTask}`;
+      setComposedPrompt(finalPrompt);
+    }
+  }, [aiSuggestedPersona, aiSuggestedTask, showSuggestionUI]);
 
-  const personaOptions = useMemo(() => 
+  const personaOptions = useMemo(() =>
     templates.filter(t => t.tags.includes('persona')).map(t => ({ displayName: t.name, tagValue: findPrimaryTag(t, 'persona') })), [templates]
   );
-  const taskOptions = useMemo(() => 
+  const taskOptions = useMemo(() =>
     templates.filter(t => t.tags.includes('task')).map(t => ({ displayName: t.name, tagValue: findPrimaryTag(t, 'task') })), [templates]
   );
 
-  const handleCompose = async () => {
+  const handleComposeFromLibrary = async (persona: string, task: string) => {
+    if (!persona || !task) {
+      setError("Please select a Persona and a Task from the dropdowns.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setComposedPrompt('');
@@ -72,11 +96,10 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
       const response = await fetch(API_COMPOSE_URL, {
         method: 'POST',
         headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ persona: selectedPersona, task: selectedTask }),
+        body: JSON.stringify({ persona, task }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Failed to compose prompt.');
-      
       let finalPrompt = data.composed_prompt;
       if (additionalInstructions.trim()) {
         finalPrompt += `\n\n${additionalInstructions}`;
@@ -91,30 +114,73 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
 
   const handleSavePrompt = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
+    setIsSavingPrompt(true);
     setError(null);
     try {
       const response = await fetch(API_PROMPTS_URL, {
         method: 'POST',
         headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newName,
-          task_description: newDescription,
+          name: newPromptName,
+          task_description: newPromptDescription,
           initial_prompt_text: composedPrompt,
         }),
       });
-      if (!response.ok) throw new Error('Failed to save the new prompt.');
+      if (!response.ok) throw new Error('Failed to save prompt via API.');
       if (onPromptSaved) onPromptSaved();
-      setIsSaveModalOpen(false);
-      setNewName('');
-      setNewDescription('');
+      setIsSavePromptModalOpen(false);
+      setNewPromptName('');
+      setNewPromptDescription('');
     } catch (err: any) {
-      setError(err.message);
+      setError('Failed to save the new prompt.');
+      console.error(err);
     } finally {
-      setIsSaving(false);
+      setIsSavingPrompt(false);
     }
   };
   
+  const handleSavePersonaTemplate = async () => {
+    setIsSavingPersona(true);
+    setError(null);
+    try {
+        const personaTemplate = {
+            name: newPersonaName,
+            description: `AI-generated persona for goal: ${recommendationGoal}`,
+            content: aiSuggestedPersona,
+            tags: ['persona', 'ai-generated'],
+            created_at: serverTimestamp(),
+        };
+        await addDoc(collection(db, 'prompt_templates'), personaTemplate);
+        setPersonaSaved(true);
+    } catch (err) {
+        setError('Failed to save Persona template.');
+        console.error(err);
+    } finally {
+        setIsSavingPersona(false);
+    }
+  };
+
+  const handleSaveTaskTemplate = async () => {
+    setIsSavingTask(true);
+    setError(null);
+    try {
+        const taskTemplate = {
+            name: newTaskName,
+            description: `AI-generated task for goal: ${recommendationGoal}`,
+            content: aiSuggestedTask,
+            tags: ['task', 'ai-generated'],
+            created_at: serverTimestamp(),
+        };
+        await addDoc(collection(db, 'prompt_templates'), taskTemplate);
+        setTaskSaved(true);
+    } catch (err) {
+        setError('Failed to save Task template.');
+        console.error(err);
+    } finally {
+        setIsSavingTask(false);
+    }
+  };
+
   const handleCopy = () => {
     navigator.clipboard.writeText(composedPrompt).then(() => {
       setCopyText('Copied!');
@@ -122,55 +188,136 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
     });
   };
 
-  // --- NEW: Handler for getting AI recommendations ---
-  const handleGetRecommendations = async () => {
+  const handleAiGeneration = async () => {
     setIsRecommending(true);
     setError(null);
+    setShowSuggestionUI(false);
+    setComposedPrompt('');
+    setLoading(true);
     try {
-      const response = await fetch(API_RECOMMEND_URL, {
-        method: 'POST',
-        headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_description: recommendationGoal }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Failed to get recommendations.');
+      const personaMetaPrompt = `Based on the user's goal, generate a single paragraph describing a suitable "persona" for an AI assistant. The goal is: "${recommendationGoal}"`;
+      const taskMetaPrompt = `Based on the user's goal, generate a single paragraph describing the specific "task" for an AI assistant to perform. The goal is: "${recommendationGoal}"`;
+      const nameMetaPrompt = `Based on the user's goal, generate a short, descriptive, 3-5 word title for a prompt template. Do not use quotes. The goal is: "${recommendationGoal}"`;
 
-      if (data.recommended_persona_tag) setSelectedPersona(data.recommended_persona_tag);
-      if (data.recommended_task_tag) setSelectedTask(data.recommended_task_tag);
+      const [personaRes, taskRes, nameRes] = await Promise.all([
+        fetch(API_EXECUTE_URL, {
+          method: 'POST',
+          headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt_text: personaMetaPrompt }),
+        }),
+        fetch(API_EXECUTE_URL, {
+          method: 'POST',
+          headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt_text: taskMetaPrompt }),
+        }),
+        fetch(API_EXECUTE_URL, {
+            method: 'POST',
+            headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_text: nameMetaPrompt }),
+        }),
+      ]);
+
+      if (!personaRes.ok || !taskRes.ok || !nameRes.ok) throw new Error('The AI assistant API returned an error.');
+
+      const personaData = await personaRes.json();
+      const taskData = await taskRes.json();
+      const nameData = await nameRes.json();
+
+      const generatedPersonaText = (typeof personaData.generated_text === 'string') ? personaData.generated_text.trim() : '';
+      const generatedTaskText = (typeof taskData.generated_text === 'string') ? taskData.generated_text.trim() : '';
+      const generatedName = (typeof nameData.generated_text === 'string') ? nameData.generated_text.trim().replace(/"/g, '') : 'AI Generated';
       
+      if (!generatedPersonaText || !generatedTaskText) throw new Error("AI Assistant returned an empty or invalid response. Please try rephrasing your goal.");
+
+      setAiSuggestedPersona(generatedPersonaText);
+      setAiSuggestedTask(generatedTaskText);
+      setNewPersonaName(`${generatedName} - Persona`);
+      setNewTaskName(`${generatedName} - Task`);
+      setShowSuggestionUI(true);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setIsRecommending(false);
+      setLoading(false);
     }
+  };
+  
+  const handleOpenSaveTemplatesModal = () => {
+    setPersonaSaved(false);
+    setTaskSaved(false);
+    setIsSaveTemplatesModalOpen(true);
+  };
+
+  const handleTryAgain = () => {
+    setShowSuggestionUI(false);
+    setAiSuggestedPersona('');
+    setAiSuggestedTask('');
+    setRecommendationGoal('');
+    setComposedPrompt('');
+    setSelectedPersona('');
+    setSelectedTask('');
   };
 
   const isComposeDisabled = loading || !selectedPersona || !selectedTask;
+  
+  const handleSendToPage = (path: string, tool?: string) => {
+    const encodedPrompt = encodeURIComponent(composedPrompt);
+    let url = `${path}?prompt=${encodedPrompt}`;
+    if (tool) {
+        url += `&tool=${tool}`;
+    }
+    router.push(url);
+  };
+
+  // NEW: This function is called by the QuickExecuteModal when its save button is clicked.
+  const handleSaveFromQuickExecute = (promptContent: string) => {
+    // 1. Close the execute modal
+    setIsExecuteModalOpen(false);
+    // 2. Update the main composed prompt with the (potentially edited) text
+    setComposedPrompt(promptContent);
+    // 3. Open the save prompt modal
+    setIsSavePromptModalOpen(true);
+  };
 
   return (
     <>
       <div className="bg-gray-800 p-4 rounded-lg flex flex-col h-full">
-        {/* --- NEW: AI Assistant Section --- */}
         <div className="p-4 border border-dashed border-sky-400/50 rounded-lg mb-6">
           <h3 className="font-semibold text-lg mb-2 text-sky-300">AI Assistant</h3>
-          <p className="text-sm text-gray-400 mb-2">Describe your goal and let the AI suggest templates for you.</p>
+          <p className="text-sm text-gray-400 mb-2">Describe your goal and let the AI generate and compose a prompt for you.</p>
           <textarea
             value={recommendationGoal}
             onChange={(e) => setRecommendationGoal(e.target.value)}
             className="w-full border rounded p-2 text-black bg-gray-200"
             rows={2}
-            placeholder="e.g., Write a witty social media post about a new product..."
+            placeholder="e.g., write a professional email to my boss about a project delay"
           />
-          <button
-            onClick={handleGetRecommendations}
-            disabled={isRecommending || !recommendationGoal}
-            className="w-full mt-2 py-2 bg-sky-600 text-white rounded hover:bg-sky-700 disabled:opacity-50 font-semibold"
-          >
-            {isRecommending ? 'Thinking...' : 'Get Suggestions'}
-          </button>
+          {showSuggestionUI ? (
+            <div className="mt-4 p-4 bg-gray-700/50 rounded-lg">
+              <p className="text-white font-medium mb-4">AI Generated the following components (you can edit them below):</p>
+              <div className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Generated Persona</label>
+                    <textarea value={aiSuggestedPersona} onChange={(e) => setAiSuggestedPersona(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200 text-sm" rows={5}/>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Generated Task</label>
+                    <textarea value={aiSuggestedTask} onChange={(e) => setAiSuggestedTask(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200 text-sm" rows={5}/>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={handleOpenSaveTemplatesModal} className="flex-1 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold">Save to Library...</button>
+                <button onClick={handleTryAgain} className="flex-1 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 font-semibold">Try Again</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={handleAiGeneration} disabled={isRecommending || !recommendationGoal} className="w-full mt-2 py-2 bg-sky-600 text-white rounded hover:bg-sky-700 disabled:opacity-50 font-semibold">
+              {isRecommending ? 'Generating...' : 'Generate with AI'}
+            </button>
+          )}
         </div>
 
-        <h2 className="text-2xl font-bold mb-4">Prompt Composer</h2>
+        <h2 className="text-2xl font-bold mb-4">Manual Composer</h2>
         <div className="space-y-4">
           <div>
             <label htmlFor="persona-select" className="block text-sm font-medium mb-1">Select Persona</label>
@@ -199,15 +346,15 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
           </div>
         </div>
         <button
-          onClick={handleCompose}
+          onClick={() => handleComposeFromLibrary(selectedPersona, selectedTask)}
           disabled={isComposeDisabled}
           className="w-full mt-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 font-semibold"
         >
-          {loading ? 'Composing...' : 'Compose Prompt'}
+          {loading ? 'Composing...' : 'Compose from Library'}
         </button>
         
-        {isComposeDisabled && !loading && (
-          <p className="text-xs text-gray-400 mt-2 text-center">Please select a Persona and a Task to enable composing.</p>
+        {isComposeDisabled && !loading && !composedPrompt && (
+          <p className="text-xs text-gray-400 mt-2 text-center">Please select a Persona and a Task to compose from your library.</p>
         )}
 
         {error && <p className="mt-4 text-red-400 text-center">{error}</p>}
@@ -217,33 +364,80 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-white">Composed Prompt</h3>
               <div className="flex gap-2">
-                <button onClick={handleCopy} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${copyText === 'Copied!' ? 'bg-green-600' : 'bg-gray-600 hover:bg-gray-500'}`}>{copyText}</button>
-                <button onClick={() => setIsSaveModalOpen(true)} className="px-4 py-2 rounded-md text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white">Save...</button>
+                {/* ADDED: Quick Execute button */}
+                <button onClick={() => setIsExecuteModalOpen(true)} className="px-4 py-2 rounded-md text-sm font-semibold bg-green-600 hover:bg-green-700 text-white">Quick Execute</button>
+                <button onClick={handleCopy} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${copyText === 'Copied!' ? 'bg-emerald-600' : 'bg-gray-600 hover:bg-gray-500'}`}>{copyText}</button>
+                <button onClick={() => setIsSavePromptModalOpen(true)} className="px-4 py-2 rounded-md text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white">Save as Prompt...</button>
               </div>
             </div>
             <pre className="whitespace-pre-wrap text-gray-200 text-sm font-sans flex-grow overflow-y-auto">{composedPrompt}</pre>
+            <div className="mt-4 pt-4 border-t border-gray-600">
+                <h4 className="text-sm font-semibold text-gray-300 mb-2">Next Steps:</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button onClick={() => handleSendToPage('/sandbox')} className="w-full py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-semibold">Send to Sandbox</button>
+                    <button onClick={() => handleSendToPage('/analyze')} className="w-full py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm font-semibold">Analyze & Diagnose</button>
+                    <button onClick={() => handleSendToPage('/analyze', 'optimize')} className="w-full py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-sm font-semibold">Optimize with APE</button>
+                </div>
+            </div>
           </div>
         )}
       </div>
-
-      <Modal isOpen={isSaveModalOpen} onClose={() => setIsSaveModalOpen(false)} title="Save New Prompt">
+      
+      <Modal isOpen={isSavePromptModalOpen} onClose={() => setIsSavePromptModalOpen(false)} title="Save New Prompt">
         <form onSubmit={handleSavePrompt}>
           <div className="space-y-4">
             <div>
-              <label htmlFor="new-name" className="block text-sm font-medium text-gray-300 mb-1">Prompt Name</label>
-              <input id="new-name" type="text" value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" required />
+              <label htmlFor="new-prompt-name" className="block text-sm font-medium text-gray-300 mb-1">Prompt Name</label>
+              <input id="new-prompt-name" type="text" value={newPromptName} onChange={(e) => setNewPromptName(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" required />
             </div>
             <div>
-              <label htmlFor="new-desc" className="block text-sm font-medium text-gray-300 mb-1">Task Description</label>
-              <textarea id="new-desc" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" rows={3} required />
+              <label htmlFor="new-prompt-desc" className="block text-sm font-medium text-gray-300 mb-1">Task Description</label>
+              <textarea id="new-prompt-desc" value={newPromptDescription} onChange={(e) => setNewPromptDescription(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" rows={3} required />
             </div>
           </div>
           <div className="mt-6 flex justify-end gap-4">
-            <button type="button" onClick={() => setIsSaveModalOpen(false)} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">Cancel</button>
-            <button type="submit" disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50 hover:bg-blue-700">{isSaving ? 'Saving...' : 'Save Prompt'}</button>
+            <button type="button" onClick={() => setIsSavePromptModalOpen(false)} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">Cancel</button>
+            <button type="submit" disabled={isSavingPrompt} className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50 hover:bg-blue-700">{isSavingPrompt ? 'Saving...' : 'Save Prompt'}</button>
           </div>
         </form>
       </Modal>
+
+      <Modal isOpen={isSaveTemplatesModalOpen} onClose={() => setIsSaveTemplatesModalOpen(false)} title="Save Generated Templates to Library">
+        {error && <p className="text-red-400 mb-4">{error}</p>}
+        <div className="space-y-6">
+            <div className="p-4 bg-gray-700/50 rounded-lg">
+                <label htmlFor="new-persona-name" className="block text-sm font-medium text-gray-300 mb-1">Persona Template Name</label>
+                <div className="flex gap-2 items-center">
+                    <input id="new-persona-name" type="text" value={newPersonaName} onChange={(e) => setNewPersonaName(e.target.value)} className="flex-grow border rounded p-2 text-black bg-gray-200" required />
+                    <button type="button" onClick={handleSavePersonaTemplate} disabled={isSavingPersona || personaSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${personaSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
+                        {isSavingPersona ? 'Saving...' : personaSaved ? 'Saved!' : 'Save'}
+                    </button>
+                </div>
+            </div>
+            <div className="p-4 bg-gray-700/50 rounded-lg">
+                <label htmlFor="new-task-name" className="block text-sm font-medium text-gray-300 mb-1">Task Template Name</label>
+                <div className="flex gap-2 items-center">
+                    <input id="new-task-name" type="text" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} className="flex-grow border rounded p-2 text-black bg-gray-200" required />
+                    <button type="button" onClick={handleSaveTaskTemplate} disabled={isSavingTask || taskSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${taskSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
+                            {isSavingTask ? 'Saving...' : taskSaved ? 'Saved!' : 'Save'}
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div className="mt-6 flex justify-end">
+            <button type="button" onClick={() => setIsSaveTemplatesModalOpen(false)} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">
+              Close
+            </button>
+        </div>
+      </Modal>
+      
+      {/* UPDATED: Pass the new handler function to the QuickExecuteModal */}
+      <QuickExecuteModal 
+        isOpen={isExecuteModalOpen} 
+        onClose={() => setIsExecuteModalOpen(false)}
+        promptText={composedPrompt} 
+        onSaveAsPrompt={handleSaveFromQuickExecute}
+      />
     </>
   );
 };
