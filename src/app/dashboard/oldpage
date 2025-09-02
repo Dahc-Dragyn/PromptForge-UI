@@ -1,7 +1,7 @@
 // src/app/dashboard/page.tsx
 'use client';
 
-import { useEffect, useState, Suspense, useMemo } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
@@ -12,10 +12,9 @@ import EditTemplateForm from '@/components/EditTemplateForm';
 import PromptComposer from '@/components/PromptComposer';
 import TemplateForm from '@/components/TemplateForm';
 import { usePromptMetrics } from '@/hooks/usePromptMetrics';
-import TopPromptsWidget, { HydratedTopPrompt } from '@/components/TopPromptsWidget';
+import TopPromptsWidget from '@/components/TopPromptsWidget';
 
 const TemplateTypeBadge = ({ tags, templateId }: { tags: string[], templateId: string }) => {
-  // FIX: Added a unique key to each possible span to prevent conflicts
   if (tags?.includes('persona')) {
     return <span key={`${templateId}-persona-badge`} className="ml-2 px-2 py-0.5 text-xs font-semibold bg-blue-500 text-white rounded-full">Persona</span>;
   }
@@ -40,23 +39,7 @@ const DashboardContent = () => {
   const initialPrompt = searchParams.get('prompt') || '';
   const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
   
-  const { topPrompts: topPromptMetrics, loading: metricsLoading, error: metricsError } = usePromptMetrics();
-
-  // This logic combines the metric data (ID and rating) with the full prompt data (name)
-  const hydratedTopPrompts: HydratedTopPrompt[] = useMemo(() => {
-    if (!topPromptMetrics || !prompts) return [];
-    
-    return topPromptMetrics.map(metric => {
-      const promptDetails = prompts.find(p => p.id === metric.promptId);
-      return {
-        id: metric.promptId,
-        name: promptDetails?.name || 'Unknown Prompt',
-        averageRating: metric.averageRating,
-        ratingCount: metric.ratingCount,
-      };
-    }).filter(p => p.name !== 'Unknown Prompt');
-
-  }, [topPromptMetrics, prompts]);
+  const { topPrompts, loading: metricsLoading, error: metricsError } = usePromptMetrics();
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/login');
@@ -154,11 +137,9 @@ const DashboardContent = () => {
             <h2 className="text-2xl font-bold mb-4 text-indigo-300">Prompt Hub</h2>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <TopPromptsWidget 
-                    topPrompts={hydratedTopPrompts}
-                    loading={metricsLoading || promptsLoading}
-                    error={metricsError || promptsError}
-                    handleCopyPrompt={handleCopyPrompt}
-                    handleDeletePrompt={handleDeletePrompt}
+                    topPrompts={topPrompts}
+                    loading={metricsLoading}
+                    error={metricsError}
                 />
                 <div className="bg-gray-800 p-4 rounded-lg h-full lg:col-span-2">
                     <h3 className="text-xl font-bold mb-4 text-white">Future Widgets</h3>

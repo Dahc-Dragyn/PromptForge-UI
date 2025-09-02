@@ -13,21 +13,12 @@ const TemplateForm = ({ onSuccess }: TemplateFormProps) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [content, setContent] = useState('');
+  // NEW: State for the template type
+  const [templateType, setTemplateType] = useState('general'); 
   const [tags, setTags] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  // --- NEW: Function to add a tag to the input field ---
-  const handleAddTag = (tagToAdd: string) => {
-    // Prevent adding duplicate tags
-    const currentTags = tags.split(',').map(t => t.trim()).filter(t => t);
-    if (currentTags.includes(tagToAdd)) {
-      return;
-    }
-    // Add the new tag
-    setTags(currentTags.length > 0 ? `${tags}, ${tagToAdd}` : tagToAdd);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,22 +31,33 @@ const TemplateForm = ({ onSuccess }: TemplateFormProps) => {
       setIsSubmitting(false);
       return;
     }
+    
+    // Combine descriptive tags with the functional tag from the type selector
+    const descriptiveTags = tags.split(',').map(tag => tag.trim()).filter(tag => tag);
+    const finalTags = [...descriptiveTags];
+    if (templateType === 'persona' || templateType === 'task') {
+      if (!finalTags.includes(templateType)) {
+        finalTags.push(templateType);
+      }
+    }
 
     const newTemplate = {
       name,
       description,
       content,
-      tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+      tags: finalTags,
       created_at: serverTimestamp(),
     };
 
     try {
       await addDoc(collection(db, 'prompt_templates'), newTemplate);
       setSuccess('Template added successfully!');
+      // Reset form
       setName('');
       setDescription('');
       setContent('');
       setTags('');
+      setTemplateType('general');
       
       if (onSuccess) {
         setTimeout(() => {
@@ -81,6 +83,23 @@ const TemplateForm = ({ onSuccess }: TemplateFormProps) => {
         <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-1">Name</label>
         <input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" />
       </div>
+
+      {/* NEW: Template Type Dropdown */}
+      <div className="mb-4">
+        <label htmlFor="template-type" className="block text-sm font-medium text-gray-300 mb-1">Template Type</label>
+        <select 
+          id="template-type" 
+          value={templateType} 
+          onChange={(e) => setTemplateType(e.target.value)} 
+          className="w-full border rounded p-2 text-black bg-gray-200"
+        >
+          <option value="general">General Component</option>
+          <option value="persona">Persona (for Prompt Composer)</option>
+          <option value="task">Task (for Prompt Composer)</option>
+        </select>
+        <p className="text-xs text-gray-400 mt-1">Select 'Persona' or 'Task' to use this in the Prompt Composer.</p>
+      </div>
+      
       <div className="mb-4">
         <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-1">Description</label>
         <textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" rows={2}></textarea>
@@ -90,23 +109,8 @@ const TemplateForm = ({ onSuccess }: TemplateFormProps) => {
         <textarea id="content" value={content} onChange={(e) => setContent(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" rows={5}></textarea>
       </div>
       <div className="mb-4">
-        <label htmlFor="tags" className="block text-sm font-medium text-gray-300 mb-1">Tags (comma-separated)</label>
-        <input id="tags" type="text" value={tags} onChange={(e) => setTags(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" />
-        
-        {/* --- NEW: Helper buttons and instructions --- */}
-        <div className="mt-2">
-          <p className="text-xs text-gray-400 mb-1">
-            To use this template in the Prompt Composer, add a tag:
-          </p>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => handleAddTag('persona')} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-              + Add 'persona' Tag
-            </button>
-            <button type="button" onClick={() => handleAddTag('task')} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
-              + Add 'task' Tag
-            </button>
-          </div>
-        </div>
+        <label htmlFor="tags" className="block text-sm font-medium text-gray-300 mb-1">Descriptive Tags (comma-separated)</label>
+        <input id="tags" type="text" value={tags} onChange={(e) => setTags(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" placeholder="e.g., email, marketing, code-gen"/>
       </div>
 
       <div className="mt-6 flex justify-end">

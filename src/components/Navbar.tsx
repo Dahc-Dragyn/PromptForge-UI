@@ -35,6 +35,10 @@ const Navbar = () => {
             <Link href="/dashboard" className="hover:underline">
               Dashboard
             </Link>
+            {/* NEW: Link to the Prompt Clinic */}
+            <Link href="/clinic" className="hover:underline text-rose-300 font-semibold">
+              Clinic
+            </Link>
             <Link href="/deep-dive" className="hover:underline">
               Deep Dive
             </Link>

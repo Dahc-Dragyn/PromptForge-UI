@@ -20,8 +20,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          <Navbar />
-          <main>{children}</main>
+          {/* UPDATED: Wrap Navbar and children in a div */}
+          <div>
+            <Navbar />
+            <main>{children}</main>
+          </div>
         </AuthProvider>
       </body>
     </html>

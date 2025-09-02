@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import Modal from './Modal';
-import QuickExecuteModal from './QuickExecuteModal'; // <-- Import the new component
+import QuickExecuteModal from './QuickExecuteModal';
 
 const API_COMPOSE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/templates/compose`;
 const API_PROMPTS_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/`;
@@ -23,6 +23,7 @@ const STYLE_OPTIONS = [
 interface PromptComposerProps {
   templates: any[];
   onPromptSaved?: () => void;
+  initialPrompt?: string; 
 }
 
 const findPrimaryTag = (template: any, category: string) => {
@@ -30,13 +31,13 @@ const findPrimaryTag = (template: any, category: string) => {
   return template.tags.find((tag: string) => tag !== category) || template.name;
 };
 
-const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
+const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: PromptComposerProps) => {
   const router = useRouter();
   const [selectedPersona, setSelectedPersona] = useState('');
   const [selectedTask, setSelectedTask] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
-  const [composedPrompt, setComposedPrompt] = useState('');
+  const [composedPrompt, setComposedPrompt] = useState(initialPrompt);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyText, setCopyText] = useState('Copy');
@@ -56,9 +57,21 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [personaSaved, setPersonaSaved] = useState(false);
   const [taskSaved, setTaskSaved] = useState(false);
-
-  // ADDED: State for the Quick Execute Modal
   const [isExecuteModalOpen, setIsExecuteModalOpen] = useState(false);
+
+  useEffect(() => {
+    // Only update URL if the prompt text is different from the initial prop
+    if (composedPrompt !== initialPrompt) {
+        const params = new URLSearchParams(window.location.search);
+        if (composedPrompt) {
+            params.set('prompt', composedPrompt);
+        } else {
+            params.delete('prompt');
+        }
+        // Use replace to avoid polluting browser history on every keystroke
+        router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [composedPrompt, initialPrompt, router]);
 
   useEffect(() => {
     if (selectedStyle) {
@@ -112,6 +125,8 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
     }
   };
 
+  // --- THIS IS THE FIX ---
+  // This function now correctly calls our FastAPI backend to create a new prompt.
   const handleSavePrompt = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingPrompt(true);
@@ -126,13 +141,22 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
           initial_prompt_text: composedPrompt,
         }),
       });
-      if (!response.ok) throw new Error('Failed to save prompt via API.');
-      if (onPromptSaved) onPromptSaved();
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to save prompt via API.');
+      }
+
+      if (onPromptSaved) {
+        onPromptSaved(); // This will trigger the refetch on the dashboard
+      }
+      
       setIsSavePromptModalOpen(false);
       setNewPromptName('');
       setNewPromptDescription('');
+
     } catch (err: any) {
-      setError('Failed to save the new prompt.');
+      setError(`Failed to save the new prompt: ${err.message}`);
       console.error(err);
     } finally {
       setIsSavingPrompt(false);
@@ -268,20 +292,17 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
     }
     router.push(url);
   };
-
-  // NEW: This function is called by the QuickExecuteModal when its save button is clicked.
+  
   const handleSaveFromQuickExecute = (promptContent: string) => {
-    // 1. Close the execute modal
     setIsExecuteModalOpen(false);
-    // 2. Update the main composed prompt with the (potentially edited) text
     setComposedPrompt(promptContent);
-    // 3. Open the save prompt modal
     setIsSavePromptModalOpen(true);
   };
 
   return (
     <>
       <div className="bg-gray-800 p-4 rounded-lg flex flex-col h-full">
+        {/* AI Assistant Section */}
         <div className="p-4 border border-dashed border-sky-400/50 rounded-lg mb-6">
           <h3 className="font-semibold text-lg mb-2 text-sky-300">AI Assistant</h3>
           <p className="text-sm text-gray-400 mb-2">Describe your goal and let the AI generate and compose a prompt for you.</p>
@@ -317,6 +338,7 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
           )}
         </div>
 
+        {/* Manual Composer Section */}
         <h2 className="text-2xl font-bold mb-4">Manual Composer</h2>
         <div className="space-y-4">
           <div>
@@ -356,21 +378,19 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
         {isComposeDisabled && !loading && !composedPrompt && (
           <p className="text-xs text-gray-400 mt-2 text-center">Please select a Persona and a Task to compose from your library.</p>
         )}
-
-        {error && <p className="mt-4 text-red-400 text-center">{error}</p>}
         
         {composedPrompt && (
           <div className="mt-4 p-6 border rounded-lg bg-gray-900 border-gray-700 relative flex-grow flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-white">Composed Prompt</h3>
-              <div className="flex gap-2">
-                {/* ADDED: Quick Execute button */}
+              <div className="flex gap-2 flex-wrap justify-end">
                 <button onClick={() => setIsExecuteModalOpen(true)} className="px-4 py-2 rounded-md text-sm font-semibold bg-green-600 hover:bg-green-700 text-white">Quick Execute</button>
                 <button onClick={handleCopy} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${copyText === 'Copied!' ? 'bg-emerald-600' : 'bg-gray-600 hover:bg-gray-500'}`}>{copyText}</button>
                 <button onClick={() => setIsSavePromptModalOpen(true)} className="px-4 py-2 rounded-md text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white">Save as Prompt...</button>
               </div>
             </div>
             <pre className="whitespace-pre-wrap text-gray-200 text-sm font-sans flex-grow overflow-y-auto">{composedPrompt}</pre>
+            
             <div className="mt-4 pt-4 border-t border-gray-600">
                 <h4 className="text-sm font-semibold text-gray-300 mb-2">Next Steps:</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -385,6 +405,7 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
       
       <Modal isOpen={isSavePromptModalOpen} onClose={() => setIsSavePromptModalOpen(false)} title="Save New Prompt">
         <form onSubmit={handleSavePrompt}>
+          {error && <p className="text-red-400 mb-4 text-center">{error}</p>}
           <div className="space-y-4">
             <div>
               <label htmlFor="new-prompt-name" className="block text-sm font-medium text-gray-300 mb-1">Prompt Name</label>
@@ -419,7 +440,7 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
                 <div className="flex gap-2 items-center">
                     <input id="new-task-name" type="text" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} className="flex-grow border rounded p-2 text-black bg-gray-200" required />
                     <button type="button" onClick={handleSaveTaskTemplate} disabled={isSavingTask || taskSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${taskSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
-                            {isSavingTask ? 'Saving...' : taskSaved ? 'Saved!' : 'Save'}
+                         {isSavingTask ? 'Saving...' : taskSaved ? 'Saved!' : 'Save'}
                     </button>
                 </div>
             </div>
@@ -431,7 +452,6 @@ const PromptComposer = ({ templates, onPromptSaved }: PromptComposerProps) => {
         </div>
       </Modal>
       
-      {/* UPDATED: Pass the new handler function to the QuickExecuteModal */}
       <QuickExecuteModal 
         isOpen={isExecuteModalOpen} 
         onClose={() => setIsExecuteModalOpen(false)}

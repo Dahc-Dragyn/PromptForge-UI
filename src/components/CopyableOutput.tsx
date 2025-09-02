@@ -15,7 +15,7 @@ const CopyableOutput = ({ title, content, subtitle }: CopyableOutputProps) => {
   const handleCopy = () => {
     navigator.clipboard.writeText(content).then(() => {
       setCopyText('Copied!');
-      setTimeout(() => setCopyText('Copy'), 2000); // Reset after 2 seconds
+      setTimeout(() => setCopyText('Copy'), 2000);
     }).catch(err => {
       console.error('Failed to copy text: ', err);
       setCopyText('Failed!');
