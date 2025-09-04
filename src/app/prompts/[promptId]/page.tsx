@@ -1,4 +1,3 @@
-// src/app/prompts/[promptId]/page.tsx
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -103,7 +102,7 @@ const PromptVersionsPage = () => {
           <h2 className="text-2xl font-bold mb-4 mt-8">Version History</h2>
           <div className="space-y-6">
             {versions.map((version) => (
-              <div key={version.version} className="bg-gray-800 rounded-lg p-6">
+              <div key={version.id || version.version} className="bg-gray-800 rounded-lg p-6">
                 <div className="flex justify-between items-center mb-4">
                   <div>
                     <h3 className="text-xl font-bold text-green-400">Version {version.version}</h3>
