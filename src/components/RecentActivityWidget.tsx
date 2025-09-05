@@ -64,7 +64,7 @@ const RecentActivityWidget = ({ recentVersions, loading, error, handleDeleteProm
       ) : (
         <ul className="space-y-3">
           {recentVersions.map((v) => (
-            <li key={v.id} className="p-3 bg-gray-700 rounded-lg">
+            <li key={`${v.promptId}-${v.id}`} className="p-3 bg-gray-700 rounded-lg">
               <p className="text-sm font-semibold text-white">
                 <Link href={`/prompts/${v.promptId}`} className="hover:underline">
                   {v.promptName}

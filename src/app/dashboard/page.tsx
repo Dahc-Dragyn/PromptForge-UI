@@ -65,17 +65,26 @@ const DashboardContent = () => {
     }).filter(p => p.name !== 'Unknown Prompt');
   }, [allPromptMetrics, prompts]);
 
-  const hydratedAndFilteredVersions = useMemo(() => {
+  const finalRecentVersions = useMemo(() => {
     if (!recentVersions || !prompts) return [];
+    
     const promptNameMap = new Map(prompts.map(p => [p.id, p.name]));
     const availablePromptIds = new Set(prompts.map(p => p.id));
+    const processedPromptIds = new Set();
+    const finalVersions = [];
 
-    return recentVersions
-      .filter(version => availablePromptIds.has(version.promptId))
-      .map(version => ({
-        ...version,
-        promptName: promptNameMap.get(version.promptId) || 'Unknown Prompt',
-      }));
+    for (const version of recentVersions) {
+      if (finalVersions.length >= 5) break;
+
+      if (availablePromptIds.has(version.promptId) && !processedPromptIds.has(version.promptId)) {
+        finalVersions.push({
+          ...version,
+          promptName: promptNameMap.get(version.promptId) || "Processing...",
+        });
+        processedPromptIds.add(version.promptId);
+      }
+    }
+    return finalVersions;
   }, [recentVersions, prompts]);
 
   useEffect(() => {
@@ -161,6 +170,7 @@ const DashboardContent = () => {
     }
   };
 
+
   if (authLoading || templatesLoading || promptsLoading) {
     return <div className="text-center p-8">Loading Dashboard...</div>;
   }
@@ -181,7 +191,7 @@ const DashboardContent = () => {
                 />
                 <div className="lg:col-span-2">
                     <RecentActivityWidget 
-                        recentVersions={hydratedAndFilteredVersions}
+                        recentVersions={finalRecentVersions}
                         loading={activityLoading || promptsLoading}
                         error={activityError || promptsError}
                         handleDeletePrompt={handleDeletePrompt} 

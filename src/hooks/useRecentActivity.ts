@@ -33,7 +33,7 @@ export const useRecentActivity = () => {
     const q = query(
       collectionGroup(db, 'versions'),
       orderBy('created_at', 'desc'),
-      limit(5)
+      limit(15) // Fetch a bit more to ensure we have 5 unique prompts after processing
     );
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
