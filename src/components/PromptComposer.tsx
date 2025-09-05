@@ -23,10 +23,9 @@ const STYLE_OPTIONS = [
 interface PromptComposerProps {
   templates: any[];
   onPromptSaved?: () => void;
-  initialPrompt?: string; 
+  initialPrompt?: string;
 }
 
-// This helper function remains the same
 const findPrimaryTag = (template: any, category: string) => {
   if (!template || !template.tags) return '';
   return template.tags.find((tag: string) => tag !== category) || template.name;
@@ -34,7 +33,6 @@ const findPrimaryTag = (template: any, category: string) => {
 
 const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: PromptComposerProps) => {
   const router = useRouter();
-  // FIX: State will now hold the template ID, not the tag value
   const [selectedPersonaId, setSelectedPersonaId] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('');
@@ -60,6 +58,9 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   const [personaSaved, setPersonaSaved] = useState(false);
   const [taskSaved, setTaskSaved] = useState(false);
   const [isExecuteModalOpen, setIsExecuteModalOpen] = useState(false);
+  // --- NEW: State for AI-generating the save details ---
+  const [isGeneratingDetails, setIsGeneratingDetails] = useState(false);
+
 
   useEffect(() => {
     if (composedPrompt !== initialPrompt) {
@@ -82,7 +83,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
       });
     }
   }, [selectedStyle]);
-  
+
   useEffect(() => {
     if (showSuggestionUI) {
       const finalPrompt = `${aiSuggestedPersona}\n\n${aiSuggestedTask}`;
@@ -90,7 +91,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
     }
   }, [aiSuggestedPersona, aiSuggestedTask, showSuggestionUI]);
 
-  // FIX: Dropdown options now include the unique ID
   const personaOptions = useMemo(() =>
     templates
       .filter(t => t.tags.includes('persona'))
@@ -110,16 +110,15 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
       })), [templates]
   );
 
-  // FIX: This function now looks up the tagValue from the selected ID
   const handleComposeFromLibrary = async () => {
     if (!selectedPersonaId || !selectedTaskId) {
       setError("Please select a Persona and a Task from the dropdowns.");
       return;
     }
-    
+
     const personaTag = personaOptions.find(p => p.id === selectedPersonaId)?.tagValue;
     const taskTag = taskOptions.find(t => t.id === selectedTaskId)?.tagValue;
-    
+
     if (!personaTag || !taskTag) {
       setError("Could not find the selected persona or task. Please try again.");
       return;
@@ -148,6 +147,42 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
     }
   };
 
+  // --- NEW: AI-Powered Save Modal Opener ---
+  const handleOpenSaveModal = async () => {
+    setIsSavePromptModalOpen(true);
+    setNewPromptName('');
+    setNewPromptDescription('');
+    setError(null);
+    setIsGeneratingDetails(true);
+
+    try {
+      const nameMetaPrompt = `Based on the following prompt, generate a short, descriptive, 3-5 word title. Do not use quotes. The prompt is: "${composedPrompt}"`;
+      const descMetaPrompt = `Based on the following prompt, generate a one-sentence description of the task it performs. The prompt is: "${composedPrompt}"`;
+
+      const [nameRes, descRes] = await Promise.all([
+        fetch(API_EXECUTE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }, body: JSON.stringify({ prompt_text: nameMetaPrompt }) }),
+        fetch(API_EXECUTE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }, body: JSON.stringify({ prompt_text: descMetaPrompt }) })
+      ]);
+
+      if (!nameRes.ok || !descRes.ok) throw new Error('Failed to generate prompt details.');
+
+      const nameData = await nameRes.json();
+      const descData = await descRes.json();
+
+      setNewPromptName(nameData.generated_text.trim().replace(/"/g, ''));
+      setNewPromptDescription(descData.generated_text.trim());
+
+    } catch (err) {
+      console.error("Failed to generate details:", err);
+      // Fallback to empty strings if generation fails
+      setNewPromptName('');
+      setNewPromptDescription('');
+    } finally {
+      setIsGeneratingDetails(false);
+    }
+  };
+
+
   const handleSavePrompt = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingPrompt(true);
@@ -169,7 +204,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
       }
 
       if (onPromptSaved) onPromptSaved();
-      
+
       setIsSavePromptModalOpen(false);
       setNewPromptName('');
       setNewPromptDescription('');
@@ -181,7 +216,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
       setIsSavingPrompt(false);
     }
   };
-  
+
   const handleSavePersonaTemplate = async () => {
     setIsSavingPersona(true);
     setError(null);
@@ -245,7 +280,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
       const generatedPersonaText = (typeof personaData.generated_text === 'string') ? personaData.generated_text.trim() : '';
       const generatedTaskText = (typeof taskData.generated_text === 'string') ? taskData.generated_text.trim() : '';
       const generatedName = (typeof nameData.generated_text === 'string') ? nameData.generated_text.trim().replace(/"/g, '') : 'AI Generated';
-      
+
       if (!generatedPersonaText || !generatedTaskText) throw new Error("AI Assistant returned an empty or invalid response. Please try rephrasing your goal.");
 
       setAiSuggestedPersona(generatedPersonaText);
@@ -260,7 +295,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
       setLoading(false);
     }
   };
-  
+
   const handleOpenSaveTemplatesModal = () => {
     setPersonaSaved(false);
     setTaskSaved(false);
@@ -278,24 +313,24 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   };
 
   const isComposeDisabled = loading || !selectedPersonaId || !selectedTaskId;
-  
+
   const handleSendToPage = (path: string, tool?: string) => {
     const encodedPrompt = encodeURIComponent(composedPrompt);
     let url = `${path}?prompt=${encodedPrompt}`;
     if (tool) url += `&tool=${tool}`;
     router.push(url);
   };
-  
+
   const handleSaveFromQuickExecute = (promptContent: string) => {
     setIsExecuteModalOpen(false);
     setComposedPrompt(promptContent);
-    setIsSavePromptModalOpen(true);
+    handleOpenSaveModal(); // Use the new AI-powered function
   };
 
   return (
     <>
       <div className="bg-gray-800 p-4 rounded-lg flex flex-col h-full">
-        {/* ... AI Assistant Section (no changes here) ... */}
+        {/* AI Assistant Section */}
         <div className="p-4 border border-dashed border-sky-400/50 rounded-lg mb-6">
           <h3 className="font-semibold text-lg mb-2 text-sky-300">AI Assistant</h3>
           <p className="text-sm text-gray-400 mb-2">Describe your goal and let the AI generate and compose a prompt for you.</p>
@@ -331,11 +366,11 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
           )}
         </div>
 
+        {/* Manual Composer Section */}
         <h2 className="text-2xl font-bold mb-4">Manual Composer</h2>
         <div className="space-y-4">
           <div>
             <label htmlFor="persona-select" className="block text-sm font-medium mb-1">Select Persona</label>
-            {/* FIX: Use selectedPersonaId and option.id for value and key */}
             <select id="persona-select" value={selectedPersonaId} onChange={(e) => setSelectedPersonaId(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200">
               <option value="">-- Choose a Persona --</option>
               {personaOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.displayName}</option>)}
@@ -343,7 +378,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
           </div>
           <div>
             <label htmlFor="task-select" className="block text-sm font-medium mb-1">Select Task</label>
-            {/* FIX: Use selectedTaskId and option.id for value and key */}
             <select id="task-select" value={selectedTaskId} onChange={(e) => setSelectedTaskId(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200">
               <option value="">-- Choose a Task --</option>
               {taskOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.displayName}</option>)}
@@ -368,53 +402,54 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
         >
           {loading ? 'Composing...' : 'Compose from Library'}
         </button>
-        
+
         {isComposeDisabled && !loading && !composedPrompt && (
           <p className="text-xs text-gray-400 mt-2 text-center">Please select a Persona and a Task to compose from your library.</p>
         )}
-        
+
         {composedPrompt && (
-            <div className="mt-4 p-6 border rounded-lg bg-gray-900 border-gray-700 relative flex-grow flex flex-col">
-              {/* ... Display and Next Steps sections (no changes here) ... */}
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-white">Composed Prompt</h3>
-                <div className="flex gap-2 flex-wrap justify-end">
-                  <button onClick={() => setIsExecuteModalOpen(true)} className="px-4 py-2 rounded-md text-sm font-semibold bg-green-600 hover:bg-green-700 text-white">Quick Execute</button>
-                  <button onClick={handleCopy} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${copyText === 'Copied!' ? 'bg-emerald-600' : 'bg-gray-600 hover:bg-gray-500'}`}>{copyText}</button>
-                  <button onClick={() => setIsSavePromptModalOpen(true)} className="px-4 py-2 rounded-md text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white">Save as Prompt...</button>
-                </div>
-              </div>
-              <pre className="whitespace-pre-wrap text-gray-200 text-sm font-sans flex-grow overflow-y-auto">{composedPrompt}</pre>
-              <div className="mt-4 pt-4 border-t border-gray-600">
-                  <h4 className="text-sm font-semibold text-gray-300 mb-2">Next Steps:</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                      <button onClick={() => handleSendToPage('/sandbox')} className="w-full py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-semibold">A/B Test</button>
-                      <button onClick={() => handleSendToPage('/analyze')} className="w-full py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm font-semibold">Analyze</button>
-                      <button onClick={() => handleSendToPage('/analyze', 'optimize')} className="w-full py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-sm font-semibold">Optimize</button>
-                      <button onClick={() => router.push(`/clinic?prompt=${encodeURIComponent(composedPrompt)}`)} className="w-full py-2 bg-rose-600 text-white rounded hover:bg-rose-700 text-sm font-semibold">Run Clinic</button>
-                  </div>
+          <div className="mt-4 p-6 border rounded-lg bg-gray-900 border-gray-700 relative flex-grow flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-white">Composed Prompt</h3>
+              <div className="flex gap-2 flex-wrap justify-end">
+                <button onClick={() => setIsExecuteModalOpen(true)} className="px-4 py-2 rounded-md text-sm font-semibold bg-green-600 hover:bg-green-700 text-white">Quick Execute</button>
+                <button onClick={handleCopy} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${copyText === 'Copied!' ? 'bg-emerald-600' : 'bg-gray-600 hover:bg-gray-500'}`}>{copyText}</button>
+                {/* --- MODIFIED: Use the new handler --- */}
+                <button onClick={handleOpenSaveModal} className="px-4 py-2 rounded-md text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white">Save as Prompt...</button>
               </div>
             </div>
+            <pre className="whitespace-pre-wrap text-gray-200 text-sm font-sans flex-grow overflow-y-auto">{composedPrompt}</pre>
+
+            <div className="mt-4 pt-4 border-t border-gray-600">
+                <h4 className="text-sm font-semibold text-gray-300 mb-2">Next Steps:</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                    <button onClick={() => handleSendToPage('/sandbox')} className="w-full py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-semibold">A/B Test</button>
+                    <button onClick={() => handleSendToPage('/analyze')} className="w-full py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm font-semibold">Analyze</button>
+                    <button onClick={() => handleSendToPage('/analyze', 'optimize')} className="w-full py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-sm font-semibold">Optimize</button>
+                    <button onClick={() => router.push(`/clinic?prompt=${encodeURIComponent(composedPrompt)}`)} className="w-full py-2 bg-rose-600 text-white rounded hover:bg-rose-700 text-sm font-semibold">Run Clinic</button>
+                </div>
+            </div>
+          </div>
         )}
       </div>
-      
-      {/* ... All Modals (no changes here) ... */}
+
+      {/* --- MODIFIED: Save Modal now uses generating state --- */}
       <Modal isOpen={isSavePromptModalOpen} onClose={() => setIsSavePromptModalOpen(false)} title="Save New Prompt">
         <form onSubmit={handleSavePrompt}>
           {error && <p className="text-red-400 mb-4 text-center">{error}</p>}
           <div className="space-y-4">
             <div>
               <label htmlFor="new-prompt-name" className="block text-sm font-medium text-gray-300 mb-1">Prompt Name</label>
-              <input id="new-prompt-name" type="text" value={newPromptName} onChange={(e) => setNewPromptName(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" required />
+              <input id="new-prompt-name" type="text" value={isGeneratingDetails ? "Generating..." : newPromptName} onChange={(e) => setNewPromptName(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" required disabled={isGeneratingDetails} />
             </div>
             <div>
               <label htmlFor="new-prompt-desc" className="block text-sm font-medium text-gray-300 mb-1">Task Description</label>
-              <textarea id="new-prompt-desc" value={newPromptDescription} onChange={(e) => setNewPromptDescription(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" rows={3} required />
+              <textarea id="new-prompt-desc" value={isGeneratingDetails ? "Generating..." : newPromptDescription} onChange={(e) => setNewPromptDescription(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" rows={3} required disabled={isGeneratingDetails} />
             </div>
           </div>
           <div className="mt-6 flex justify-end gap-4">
             <button type="button" onClick={() => setIsSavePromptModalOpen(false)} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">Cancel</button>
-            <button type="submit" disabled={isSavingPrompt} className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50 hover:bg-blue-700">{isSavingPrompt ? 'Saving...' : 'Save Prompt'}</button>
+            <button type="submit" disabled={isSavingPrompt || isGeneratingDetails} className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50 hover:bg-blue-700">{isSavingPrompt ? 'Saving...' : 'Save Prompt'}</button>
           </div>
         </form>
       </Modal>
@@ -447,11 +482,11 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
             </button>
         </div>
       </Modal>
-      
-      <QuickExecuteModal 
-        isOpen={isExecuteModalOpen} 
+
+      <QuickExecuteModal
+        isOpen={isExecuteModalOpen}
         onClose={() => setIsExecuteModalOpen(false)}
-        promptText={composedPrompt} 
+        promptText={composedPrompt}
         onSaveAsPrompt={handleSaveFromQuickExecute}
       />
     </>

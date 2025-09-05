@@ -5,7 +5,8 @@ import { useState, useEffect, useCallback } from 'react';
 
 const API_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/`;
 
-export const usePrompts = () => {
+// --- NEW: Add a prop to control whether archived items are shown ---
+export const usePrompts = (showArchived = false) => {
   const [prompts, setPrompts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +27,15 @@ export const usePrompts = () => {
         throw new Error(`API responded with status ${response.status}.`);
       }
       
-      const data = await response.json();
+      let data = await response.json();
+      
+      // --- MODIFIED: Conditionally filter out archived prompts on the client-side ---
+      if (!showArchived) {
+        data = data.filter((p: any) => !p.isArchived);
+      }
+
+      data.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
       setPrompts(data);
     } catch (err: any) {
       setError(err.message);
@@ -34,7 +43,7 @@ export const usePrompts = () => {
     } finally {
       if (isInitialLoad) setLoading(false);
     }
-  }, []);
+  }, [showArchived]); // --- NEW: Add showArchived as a dependency ---
 
   useEffect(() => {
     fetchPrompts(true);

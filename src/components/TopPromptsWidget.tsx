@@ -3,6 +3,7 @@
 
 import { StarIcon } from '@heroicons/react/24/solid';
 import Link from 'next/link';
+import SendToLlm from './SendToLlm';
 
 // This interface represents the combined data the widget will receive
 export interface HydratedTopPrompt {
@@ -16,7 +17,6 @@ interface TopPromptsWidgetProps {
   topPrompts: HydratedTopPrompt[];
   loading: boolean;
   error: string | null;
-  // We'll pass the handler functions from the dashboard down to the widget
   handleCopyPrompt: (promptId: string) => void;
   handleDeletePrompt: (promptId: string) => void;
 }
@@ -74,8 +74,10 @@ const TopPromptsWidget = ({
               <p className="text-xs text-gray-500 mt-1">
                 ({prompt.ratingCount} {prompt.ratingCount === 1 ? 'rating' : 'ratings'})
               </p>
-              {/* Action Buttons */}
-              <div className="mt-3 flex items-center gap-2">
+              
+              {/* --- FIX: Updated horizontal layout for all buttons --- */}
+              <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
+                {/* Primary Actions */}
                 <Link href={`/prompts/${prompt.id}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
                   View
                 </Link>
@@ -91,6 +93,15 @@ const TopPromptsWidget = ({
                 >
                   Delete
                 </button>
+
+                {/* Spacer */}
+                <div className="flex-grow"></div>
+
+                {/* Send To Actions */}
+                <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">Send to:</span>
+                    <SendToLlm promptId={prompt.id} />
+                </div>
               </div>
             </li>
           ))}

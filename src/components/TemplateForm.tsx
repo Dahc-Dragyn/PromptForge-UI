@@ -13,7 +13,6 @@ const TemplateForm = ({ onSuccess }: TemplateFormProps) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [content, setContent] = useState('');
-  // NEW: State for the template type
   const [templateType, setTemplateType] = useState('general'); 
   const [tags, setTags] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,7 +31,6 @@ const TemplateForm = ({ onSuccess }: TemplateFormProps) => {
       return;
     }
     
-    // Combine descriptive tags with the functional tag from the type selector
     const descriptiveTags = tags.split(',').map(tag => tag.trim()).filter(tag => tag);
     const finalTags = [...descriptiveTags];
     if (templateType === 'persona' || templateType === 'task') {
@@ -47,6 +45,8 @@ const TemplateForm = ({ onSuccess }: TemplateFormProps) => {
       content,
       tags: finalTags,
       created_at: serverTimestamp(),
+      // --- FIX: Ensure all new templates have the isArchived field ---
+      isArchived: false,
     };
 
     try {
@@ -84,7 +84,6 @@ const TemplateForm = ({ onSuccess }: TemplateFormProps) => {
         <input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" />
       </div>
 
-      {/* NEW: Template Type Dropdown */}
       <div className="mb-4">
         <label htmlFor="template-type" className="block text-sm font-medium text-gray-300 mb-1">Template Type</label>
         <select 

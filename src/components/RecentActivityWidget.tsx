@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import SendToLlm from './SendToLlm';
 
 const timeAgo = (date: Date): string => {
   const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
@@ -75,7 +76,8 @@ const RecentActivityWidget = ({ recentVersions, loading, error, handleDeleteProm
               <p className="text-xs text-gray-500 mb-3">
                 {v.created_at ? timeAgo(new Date(v.created_at.seconds * 1000)) : 'Just now'}
               </p>
-              <div className="flex items-center gap-2">
+              {/* --- MODIFIED: Horizontal layout for buttons --- */}
+              <div className="flex flex-wrap items-center gap-2">
                 <Link href={`/prompts/${v.promptId}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
                   View
                 </Link>
@@ -91,6 +93,11 @@ const RecentActivityWidget = ({ recentVersions, loading, error, handleDeleteProm
                 >
                   Delete
                 </button>
+                {/* --- NEW: SendToLlm with updated styling for horizontal integration --- */}
+                <div className="flex items-center gap-2 ml-auto"> {/* Added ml-auto to push to right */}
+                    <span className="text-xs text-gray-400">Send to:</span>
+                    <SendToLlm promptText={v.prompt_text} />
+                </div>
               </div>
             </li>
           ))}
