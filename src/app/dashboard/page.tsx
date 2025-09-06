@@ -64,21 +64,20 @@ const DashboardContent = () => {
       alert("Error updating template. Please try again.");
     }
   };
-  
-  // --- NEW: Handler to archive/unarchive a prompt directly in Firestore ---
+
+  // --- CORRECTED: Handler to archive/unarchive a prompt directly in Firestore ---
   const handlePromptArchiveToggle = async (id: string, currentStatus: boolean) => {
-    // NOTE: We assume the collection name is 'prompts'.
     const promptRef = doc(db, 'prompts', id);
     try {
         await updateDoc(promptRef, { isArchived: !currentStatus });
-        // After updating, we refetch to ensure the client-side filter in the hook re-runs.
+        // After updating, we refetch to ensure the UI updates correctly based on the client-side filter
         refetchPrompts();
     } catch (err) {
         console.error("Failed to update prompt archive status:", err);
         alert("Error updating prompt. Please try again.");
     }
   };
-
+  
   const uniqueTemplateTags = useMemo(() => {
     const allTags = templates.flatMap(t => t.tags || []);
     return ['all', ...Array.from(new Set(allTags))];
@@ -363,8 +362,8 @@ const DashboardContent = () => {
                         >
                           {activeItemId === prompt.id ? '...' : copiedPromptId === prompt.id ? 'Copied!' : 'Copy'}
                         </button>
-                        {/* --- MODIFIED: Prompt Archive button is now functional --- */}
-                        <button onClick={() => handlePromptArchiveToggle(prompt.id, !!prompt.isArchived)} disabled={activeItemId === prompt.id} className="p-1 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50" title={prompt.isArchived ? 'Unarchive' : 'Archive'}>
+                        {/* --- MODIFIED: Prompt Archive button is now fully functional --- */}
+                        <button onClick={() => handlePromptArchiveToggle(prompt.id, !!prompt.isArchived)} className="p-1 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700" title={prompt.isArchived ? 'Unarchive' : 'Archive'}>
                             {prompt.isArchived ? <ArrowUturnLeftIcon className="h-4 w-4" /> : <ArchiveBoxIcon className="h-4 w-4" />}
                         </button>
                         <button onClick={() => handleDeletePrompt(prompt.id)} disabled={activeItemId === prompt.id} className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors">{activeItemId === prompt.id ? 'Deleting...' : 'Delete'}</button>
