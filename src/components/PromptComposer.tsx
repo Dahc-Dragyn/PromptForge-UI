@@ -5,11 +5,12 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/context/AuthContext'; // --- NEW: Import useAuth
 import Modal from './Modal';
 import QuickExecuteModal from './QuickExecuteModal';
 
+// API URLs are kept for functions that still need them (Compose, Execute, AI helpers)
 const API_COMPOSE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/templates/compose`;
-const API_PROMPTS_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/`;
 const API_EXECUTE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`;
 
 const STYLE_OPTIONS = [
@@ -33,6 +34,7 @@ const findPrimaryTag = (template: any, category: string) => {
 
 const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: PromptComposerProps) => {
   const router = useRouter();
+  const { user } = useAuth(); // --- NEW: Get the authenticated user
   const [selectedPersonaId, setSelectedPersonaId] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('');
@@ -58,7 +60,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   const [personaSaved, setPersonaSaved] = useState(false);
   const [taskSaved, setTaskSaved] = useState(false);
   const [isExecuteModalOpen, setIsExecuteModalOpen] = useState(false);
-  // --- NEW: State for AI-generating the save details ---
   const [isGeneratingDetails, setIsGeneratingDetails] = useState(false);
 
 
@@ -147,7 +148,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
     }
   };
 
-  // --- NEW: AI-Powered Save Modal Opener ---
   const handleOpenSaveModal = async () => {
     setIsSavePromptModalOpen(true);
     setNewPromptName('');
@@ -174,7 +174,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
 
     } catch (err) {
       console.error("Failed to generate details:", err);
-      // Fallback to empty strings if generation fails
       setNewPromptName('');
       setNewPromptDescription('');
     } finally {
@@ -183,24 +182,43 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   };
 
 
+  // --- FINAL FIX: This function now saves directly to Firestore ---
   const handleSavePrompt = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+        setError("You must be logged in to save a prompt.");
+        return;
+    }
     setIsSavingPrompt(true);
     setError(null);
+
+    const newPrompt = {
+        name: newPromptName,
+        task_description: newPromptDescription,
+        userId: user.uid, // Add the user's ID
+        isArchived: false, // Default to not archived
+        created_at: serverTimestamp(),
+    };
+
     try {
-      const response = await fetch(API_PROMPTS_URL, {
+      // Step 1: Create the main prompt document directly in Firestore
+      const docRef = await addDoc(collection(db, 'prompts'), newPrompt);
+      
+      // Step 2: Use the backend API ONLY to create the initial version subcollection
+      const versionsUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${docRef.id}/versions`;
+      const versionResponse = await fetch(versionsUrl, {
         method: 'POST',
         headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newPromptName,
-          task_description: newPromptDescription,
-          initial_prompt_text: composedPrompt,
+          prompt_text: composedPrompt,
+          commit_message: "Initial version created from Composer.",
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to save prompt via API.');
+      if (!versionResponse.ok) {
+        // If versioning fails, we should ideally delete the prompt doc we just created.
+        // For now, we'll just throw an error.
+        throw new Error('Prompt document was created, but failed to save the initial version text.');
       }
 
       if (onPromptSaved) onPromptSaved();
@@ -221,7 +239,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
     setIsSavingPersona(true);
     setError(null);
     try {
-        const personaTemplate = { name: newPersonaName, description: `AI-generated persona for goal: ${recommendationGoal}`, content: aiSuggestedPersona, tags: ['persona', 'ai-generated'], created_at: serverTimestamp() };
+        const personaTemplate = { name: newPersonaName, description: `AI-generated persona for goal: ${recommendationGoal}`, content: aiSuggestedPersona, tags: ['persona', 'ai-generated'], created_at: serverTimestamp(), isArchived: false };
         await addDoc(collection(db, 'prompt_templates'), personaTemplate);
         setPersonaSaved(true);
     } catch (err) {
@@ -236,7 +254,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
     setIsSavingTask(true);
     setError(null);
     try {
-        const taskTemplate = { name: newTaskName, description: `AI-generated task for goal: ${recommendationGoal}`, content: aiSuggestedTask, tags: ['task', 'ai-generated'], created_at: serverTimestamp() };
+        const taskTemplate = { name: newTaskName, description: `AI-generated task for goal: ${recommendationGoal}`, content: aiSuggestedTask, tags: ['task', 'ai-generated'], created_at: serverTimestamp(), isArchived: false };
         await addDoc(collection(db, 'prompt_templates'), taskTemplate);
         setTaskSaved(true);
     } catch (err) {
@@ -324,13 +342,12 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   const handleSaveFromQuickExecute = (promptContent: string) => {
     setIsExecuteModalOpen(false);
     setComposedPrompt(promptContent);
-    handleOpenSaveModal(); // Use the new AI-powered function
+    handleOpenSaveModal();
   };
 
   return (
     <>
       <div className="bg-gray-800 p-4 rounded-lg flex flex-col h-full">
-        {/* AI Assistant Section */}
         <div className="p-4 border border-dashed border-sky-400/50 rounded-lg mb-6">
           <h3 className="font-semibold text-lg mb-2 text-sky-300">AI Assistant</h3>
           <p className="text-sm text-gray-400 mb-2">Describe your goal and let the AI generate and compose a prompt for you.</p>
@@ -366,7 +383,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
           )}
         </div>
 
-        {/* Manual Composer Section */}
         <h2 className="text-2xl font-bold mb-4">Manual Composer</h2>
         <div className="space-y-4">
           <div>
@@ -414,7 +430,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
               <div className="flex gap-2 flex-wrap justify-end">
                 <button onClick={() => setIsExecuteModalOpen(true)} className="px-4 py-2 rounded-md text-sm font-semibold bg-green-600 hover:bg-green-700 text-white">Quick Execute</button>
                 <button onClick={handleCopy} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${copyText === 'Copied!' ? 'bg-emerald-600' : 'bg-gray-600 hover:bg-gray-500'}`}>{copyText}</button>
-                {/* --- MODIFIED: Use the new handler --- */}
                 <button onClick={handleOpenSaveModal} className="px-4 py-2 rounded-md text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white">Save as Prompt...</button>
               </div>
             </div>
@@ -433,7 +448,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
         )}
       </div>
 
-      {/* --- MODIFIED: Save Modal now uses generating state --- */}
       <Modal isOpen={isSavePromptModalOpen} onClose={() => setIsSavePromptModalOpen(false)} title="Save New Prompt">
         <form onSubmit={handleSavePrompt}>
           {error && <p className="text-red-400 mb-4 text-center">{error}</p>}

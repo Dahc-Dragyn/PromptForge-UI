@@ -47,7 +47,8 @@ const DashboardContent = () => {
   const [copiedTemplateId, setCopiedTemplateId] = useState<string | null>(null);
   
   const { templates, loading: templatesLoading } = usePromptTemplates(showArchived);
-  const { prompts, loading: promptsLoading, error: promptsError, refetch: refetchPrompts } = usePrompts(showArchived);
+  // --- CHANGE: The 'refetch' function is no longer returned by the corrected usePrompts hook ---
+  const { prompts, loading: promptsLoading, error: promptsError } = usePrompts(showArchived);
   const { recentVersions, loading: activityLoading, error: activityError } = useRecentActivity();
   const { topPrompts: allPromptMetrics, loading: metricsLoading, error: metricsError } = usePromptMetrics();
   
@@ -61,20 +62,17 @@ const DashboardContent = () => {
       await updateDoc(templateRef, { isArchived: !currentStatus });
     } catch (err) {
       console.error("Failed to update template archive status:", err);
-      alert("Error updating template. Please try again.");
     }
   };
 
-  // --- CORRECTED: Handler to archive/unarchive a prompt directly in Firestore ---
+  // --- FINAL FIX ---
+  // This function now correctly writes directly to Firestore. The UI updates automatically.
   const handlePromptArchiveToggle = async (id: string, currentStatus: boolean) => {
     const promptRef = doc(db, 'prompts', id);
     try {
         await updateDoc(promptRef, { isArchived: !currentStatus });
-        // After updating, we refetch to ensure the UI updates correctly based on the client-side filter
-        refetchPrompts();
     } catch (err) {
         console.error("Failed to update prompt archive status:", err);
-        alert("Error updating prompt. Please try again.");
     }
   };
   
@@ -89,11 +87,13 @@ const DashboardContent = () => {
       processedTemplates = processedTemplates.filter(t => t.tags?.includes(templateFilterTag));
     }
     processedTemplates.sort((a, b) => {
+      const timeA = a.created_at?.seconds || 0;
+      const timeB = b.created_at?.seconds || 0;
       switch (templateSort) {
         case 'a-z': return a.name.localeCompare(b.name);
         case 'z-a': return b.name.localeCompare(a.name);
-        case 'oldest': return new Date(a.created_at.seconds * 1000).getTime() - new Date(b.created_at.seconds * 1000).getTime();
-        default: return new Date(b.created_at.seconds * 1000).getTime() - new Date(a.created_at.seconds * 1000).getTime();
+        case 'oldest': return timeA - timeB;
+        default: return timeB - timeA;
       }
     });
     return processedTemplates;
@@ -102,11 +102,14 @@ const DashboardContent = () => {
   const sortedPrompts = useMemo(() => {
     const processedPrompts = [...prompts];
     processedPrompts.sort((a, b) => {
+      // Handle both Firestore Timestamps (from new hook) and ISO strings (from old API)
+      const timeA = a.created_at?.seconds ? a.created_at.seconds * 1000 : new Date(a.created_at).getTime();
+      const timeB = b.created_at?.seconds ? b.created_at.seconds * 1000 : new Date(b.created_at).getTime();
       switch (promptSort) {
         case 'a-z': return a.name.localeCompare(b.name);
         case 'z-a': return b.name.localeCompare(a.name);
-        case 'oldest': return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        default: return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'oldest': return timeA - timeB;
+        default: return timeB - timeA;
       }
     });
     return processedPrompts;
@@ -139,7 +142,6 @@ const DashboardContent = () => {
 
     for (const version of recentVersions) {
       if (finalVersions.length >= 5) break;
-
       if (availablePromptIds.has(version.promptId) && !processedPromptIds.has(version.promptId)) {
         finalVersions.push({
           ...version,
@@ -156,7 +158,7 @@ const DashboardContent = () => {
   }, [user, authLoading, router]);
 
   const handlePromptRating = async (promptId: string, newRating: number) => {
-    if (!user) { alert('You must be logged in to rate a prompt.'); return; }
+    if (!user) { return; }
     setIsRatingSubmitting(true);
     try {
       const versionsUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}/versions`;
@@ -166,7 +168,7 @@ const DashboardContent = () => {
       const latestVersion = versions.length > 0 ? versions.sort((a: any, b: any) => b.version - a.version)[0] : { version: 0, prompt_text: 'N/A' };
       const newMetric = { source: 'dashboard_rating', promptId: promptId, promptVersion: latestVersion.version ?? 0, promptText: latestVersion.prompt_text, rating: newRating, createdAt: serverTimestamp(), userId: user.uid };
       await addDoc(collection(db, 'prompt_metrics'), newMetric);
-    } catch (err) { console.error("Rating submission failed:", err); alert("Failed to save rating. Please try again."); } 
+    } catch (err) { console.error("Rating submission failed:", err); } 
     finally { setIsRatingSubmitting(false); }
   };
 
@@ -180,7 +182,7 @@ const DashboardContent = () => {
         const docToDelete = querySnapshot.docs[0];
         await deleteDoc(docToDelete.ref);
       } else { console.log("No previous rating found for this user to remove."); }
-    } catch (err) { console.error("Failed to remove rating:", err); alert("Failed to remove rating. You may need to create a Firestore index."); } 
+    } catch (err) { console.error("Failed to remove rating:", err); } 
     finally { setIsRatingSubmitting(false); }
   };
 
@@ -206,8 +208,8 @@ const DashboardContent = () => {
         await navigator.clipboard.writeText(latestVersion.prompt_text);
         setCopiedPromptId(promptId);
         setTimeout(() => setCopiedPromptId(null), 2000);
-      } else { alert('This prompt has no versions to copy.'); }
-    } catch (err) { alert('Error copying prompt.'); console.error(err); } 
+      }
+    } catch (err) { console.error(err); } 
     finally { setActiveItemId(null); }
   };
 
@@ -217,8 +219,8 @@ const DashboardContent = () => {
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}`, { method: 'DELETE', headers: { 'ngrok-skip-browser-warning': 'true' }});
         if (!response.ok) throw new Error('Failed to delete prompt.');
-        await refetchPrompts();
-      } catch (err) { alert('Error deleting prompt.'); console.error(err); } 
+        // No refetch needed, the real-time listener will handle the UI update.
+      } catch (err) { console.error(err); } 
       finally { setActiveItemId(null); }
     }
   };
@@ -228,7 +230,7 @@ const DashboardContent = () => {
       setActiveItemId(templateId);
       try {
         await deleteDoc(doc(db, 'prompt_templates', templateId));
-      } catch (err) { alert('Error deleting template.'); console.error(err); } 
+      } catch (err) { console.error(err); } 
       finally { setActiveItemId(null); }
     }
   };
@@ -362,7 +364,6 @@ const DashboardContent = () => {
                         >
                           {activeItemId === prompt.id ? '...' : copiedPromptId === prompt.id ? 'Copied!' : 'Copy'}
                         </button>
-                        {/* --- MODIFIED: Prompt Archive button is now fully functional --- */}
                         <button onClick={() => handlePromptArchiveToggle(prompt.id, !!prompt.isArchived)} className="p-1 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700" title={prompt.isArchived ? 'Unarchive' : 'Archive'}>
                             {prompt.isArchived ? <ArrowUturnLeftIcon className="h-4 w-4" /> : <ArchiveBoxIcon className="h-4 w-4" />}
                         </button>
@@ -385,7 +386,7 @@ const DashboardContent = () => {
             <div className="flex-grow">
               <PromptComposer 
                 templates={templates} 
-                onPromptSaved={refetchPrompts} 
+                onPromptSaved={() => { /* No longer needed */ }} 
                 initialPrompt={initialPrompt} 
               />
             </div>
