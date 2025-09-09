@@ -1,11 +1,11 @@
 // src/components/TopPromptsWidget.tsx
 'use client';
 
+import { useState } from 'react'; // --- NEW: Import useState ---
 import { StarIcon } from '@heroicons/react/24/solid';
 import Link from 'next/link';
 import SendToLlm from './SendToLlm';
 
-// This interface represents the combined data the widget will receive
 export interface HydratedTopPrompt {
   id: string;
   name: string;
@@ -28,6 +28,15 @@ const TopPromptsWidget = ({
   handleCopyPrompt,
   handleDeletePrompt,
 }: TopPromptsWidgetProps) => {
+  // --- NEW: Local state to track which prompt is copied ---
+  const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
+
+  // --- NEW: Wrapper function to handle local state and call the prop function ---
+  const onCopy = (promptId: string) => {
+    handleCopyPrompt(promptId); // This will show the toast from the parent
+    setCopiedPromptId(promptId);
+    setTimeout(() => setCopiedPromptId(null), 2000);
+  };
 
   if (loading) {
     return (
@@ -75,17 +84,16 @@ const TopPromptsWidget = ({
                 ({prompt.ratingCount} {prompt.ratingCount === 1 ? 'rating' : 'ratings'})
               </p>
               
-              {/* --- FIX: Updated horizontal layout for all buttons --- */}
               <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
-                {/* Primary Actions */}
                 <Link href={`/prompts/${prompt.id}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
                   View
                 </Link>
+                {/* --- FIX: Button now uses local state for its text --- */}
                 <button 
-                  onClick={() => handleCopyPrompt(prompt.id)}
-                  className="px-3 py-1 text-xs bg-gray-600 text-gray-200 rounded hover:bg-gray-500"
+                  onClick={() => onCopy(prompt.id)}
+                  className={`px-3 py-1 text-xs rounded transition-colors ${copiedPromptId === prompt.id ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'}`}
                 >
-                  Copy
+                  {copiedPromptId === prompt.id ? 'Copied!' : 'Copy'}
                 </button>
                  <button 
                   onClick={() => handleDeletePrompt(prompt.id)}
@@ -94,10 +102,8 @@ const TopPromptsWidget = ({
                   Delete
                 </button>
 
-                {/* Spacer */}
                 <div className="flex-grow"></div>
 
-                {/* Send To Actions */}
                 <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400">Send to:</span>
                     <SendToLlm promptId={prompt.id} />

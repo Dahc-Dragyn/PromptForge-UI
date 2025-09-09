@@ -33,8 +33,6 @@ function AnalyzeContent() {
 
   const [activeTool, setActiveTool] = useState<'simple' | 'optimize'>('simple');
   const [promptText, setPromptText] = useState('');
-
-  // --- UPDATED: Default states are now clean for a better UX ---
   const [taskDescription, setTaskDescription] = useState('');
   const [examples, setExamples] = useState<Example[]>([]);
   const [currentExample, setCurrentExample] = useState<Example>({ input: '', output: '' });
@@ -47,7 +45,6 @@ function AnalyzeContent() {
   const [isGeneratingExample, setIsGeneratingExample] = useState(false);
   const [exampleFocus, setExampleFocus] = useState(FOCUS_TYPES[0]);
 
-  // --- NEW: State for the Save Prompt modal ---
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [promptToSave, setPromptToSave] = useState('');
   const [newPromptName, setNewPromptName] = useState('');
@@ -105,7 +102,7 @@ function AnalyzeContent() {
     setIsGeneratingExample(true);
     setError(null);
 
-    const metaPrompt = `You are an assistant that creates examples for a prompt engineering tool. The user's task is: "${taskDescription}". The user wants to generate an example that specifically focuses on: "${exampleFocus}". Generate a single, high-quality, and concise JSON object with two keys: "input" and "output" that clearly demonstrates this. Do not provide any explanation or text outside of the JSON object.`;
+    const metaPrompt = `You are an assistant that creates examples for a prompt engineering tool. The user's task is: "${taskDescription}". The user wants to generate an example that specifically focuses on: "${exampleFocus}". Generate a single, simple, clear, and concise JSON object with two keys: "input" and "output" that clearly demonstrates this. Do not provide any explanation or text outside of the JSON object. The example should be suitable for demonstrating the core task, not a comprehensive breakdown.`;
 
     try {
       const response = await fetch(`${API_BASE_URL}/execute`, {
@@ -128,7 +125,6 @@ function AnalyzeContent() {
       const outputValue = typeof generatedJson.output === 'object' ? JSON.stringify(generatedJson.output, null, 2) : generatedJson.output;
 
       if (inputValue && outputValue) {
-        // --- THIS IS THE FIX: Add the new example directly to the main list ---
         setExamples(prevExamples => [...prevExamples, { input: inputValue, output: outputValue }]);
       } else {
         throw new Error("AI response was not in the expected format.");
@@ -277,7 +273,8 @@ function AnalyzeContent() {
                 <div className="space-y-4">
                   <div>
                       <label htmlFor="task_description" className="block text-sm font-medium text-gray-700 mb-1">Task Description</label>
-                      <textarea id="task_description" value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} className="w-full border rounded p-2 text-black border-gray-300" rows={3} placeholder="e.g., Turn a statement into a question." />
+                      <textarea id="task_description" value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} className="w-full border rounded p-2 text-black border-gray-300" rows={3} placeholder="e.g., Turn a statement into a question." maxLength={300} />
+                      <p className="text-xs text-gray-500 mt-1 italic">Please provide a short, high-level goal for your prompt.</p>
                   </div>
                   <div>
                       <label htmlFor="example-focus" className="block text-sm font-medium text-gray-700 mb-1">Example Focus</label>

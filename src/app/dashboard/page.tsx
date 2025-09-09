@@ -20,6 +20,7 @@ import { doc, updateDoc, addDoc, collection, serverTimestamp, query, where, orde
 import { db } from '@/lib/firebase';
 import { ArchiveBoxIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/solid';
 import SendToLlm from '@/components/SendToLlm';
+import toast from 'react-hot-toast';
 
 const TemplateTypeBadge = ({ tags, templateId }: { tags: string[], templateId: string }) => {
   if (tags?.includes('persona')) {
@@ -47,7 +48,6 @@ const DashboardContent = () => {
   const [copiedTemplateId, setCopiedTemplateId] = useState<string | null>(null);
   
   const { templates, loading: templatesLoading } = usePromptTemplates(showArchived);
-  // --- CHANGE: The 'refetch' function is no longer returned by the corrected usePrompts hook ---
   const { prompts, loading: promptsLoading, error: promptsError } = usePrompts(showArchived);
   const { recentVersions, loading: activityLoading, error: activityError } = useRecentActivity();
   const { topPrompts: allPromptMetrics, loading: metricsLoading, error: metricsError } = usePromptMetrics();
@@ -65,8 +65,6 @@ const DashboardContent = () => {
     }
   };
 
-  // --- FINAL FIX ---
-  // This function now correctly writes directly to Firestore. The UI updates automatically.
   const handlePromptArchiveToggle = async (id: string, currentStatus: boolean) => {
     const promptRef = doc(db, 'prompts', id);
     try {
@@ -102,7 +100,6 @@ const DashboardContent = () => {
   const sortedPrompts = useMemo(() => {
     const processedPrompts = [...prompts];
     processedPrompts.sort((a, b) => {
-      // Handle both Firestore Timestamps (from new hook) and ISO strings (from old API)
       const timeA = a.created_at?.seconds ? a.created_at.seconds * 1000 : new Date(a.created_at).getTime();
       const timeB = b.created_at?.seconds ? b.created_at.seconds * 1000 : new Date(b.created_at).getTime();
       switch (promptSort) {
@@ -191,6 +188,7 @@ const DashboardContent = () => {
 
   const handleCopyTemplate = (content: string, templateId: string) => {
     navigator.clipboard.writeText(content).then(() => {
+      toast.success('Template content copied to clipboard!');
       setCopiedTemplateId(templateId);
       setTimeout(() => setCopiedTemplateId(null), 2000);
     });
@@ -206,10 +204,14 @@ const DashboardContent = () => {
       if (versions.length > 0) {
         const latestVersion = versions.sort((a: any, b: any) => b.version - a.version)[0];
         await navigator.clipboard.writeText(latestVersion.prompt_text);
+        toast.success('Latest prompt version copied to clipboard!');
         setCopiedPromptId(promptId);
         setTimeout(() => setCopiedPromptId(null), 2000);
       }
-    } catch (err) { console.error(err); } 
+    } catch (err) { 
+        toast.error('Error copying prompt.');
+        console.error(err); 
+    } 
     finally { setActiveItemId(null); }
   };
 
@@ -219,7 +221,6 @@ const DashboardContent = () => {
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}`, { method: 'DELETE', headers: { 'ngrok-skip-browser-warning': 'true' }});
         if (!response.ok) throw new Error('Failed to delete prompt.');
-        // No refetch needed, the real-time listener will handle the UI update.
       } catch (err) { console.error(err); } 
       finally { setActiveItemId(null); }
     }
@@ -276,7 +277,9 @@ const DashboardContent = () => {
             </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* --- RESPONSIVE LAYOUT FIX --- */}
+        {/* This grid now adjusts from 1 to 2 to 3 columns at wider breakpoints for better spacing */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-8">
           <div className="flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-bold">Template Library</h2>
@@ -381,12 +384,13 @@ const DashboardContent = () => {
             </div>
           </div>
 
-          <div className="flex flex-col">
+          {/* This div will now span 2 columns on 'lg' screens and 1 on '2xl' screens to fit the new grid */}
+          <div className="flex flex-col lg:col-span-2 2xl:col-span-1">
             <h2 className="text-2xl font-bold mb-4">Compose a Prompt</h2>
             <div className="flex-grow">
               <PromptComposer 
                 templates={templates} 
-                onPromptSaved={() => { /* No longer needed */ }} 
+                onPromptSaved={() => {}} 
                 initialPrompt={initialPrompt} 
               />
             </div>

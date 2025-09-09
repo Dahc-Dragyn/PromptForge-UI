@@ -4,20 +4,72 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import SendToLlm from './SendToLlm';
+import toast from 'react-hot-toast';
 
 const timeAgo = (date: Date): string => {
   const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
   let interval = seconds / 31536000;
-  if (interval > 1) return Math.floor(interval) + " years ago";
+  if (interval > 1) return `${Math.floor(interval)} years ago`;
   interval = seconds / 2592000;
-  if (interval > 1) return Math.floor(interval) + " months ago";
+  if (interval > 1) return `${Math.floor(interval)} months ago`;
   interval = seconds / 86400;
-  if (interval > 1) return Math.floor(interval) + " days ago";
+  if (interval > 1) return `${Math.floor(interval)} days ago`;
   interval = seconds / 3600;
-  if (interval > 1) return Math.floor(interval) + " hours ago";
+  if (interval > 1) return `${Math.floor(interval)} hours ago`;
   interval = seconds / 60;
-  if (interval > 1) return Math.floor(interval) + " minutes ago";
-  return Math.floor(seconds) + " seconds ago";
+  if (interval > 1) return `${Math.floor(interval)} minutes ago`;
+  return `${Math.floor(seconds)} seconds ago`;
+};
+
+// --- NEW: Sub-component to isolate state for each item ---
+const RecentActivityItem = ({ version, handleDeletePrompt }: { version: any, handleDeletePrompt: (promptId: string) => void }) => {
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(version.prompt_text).then(() => {
+      toast.success('Version content copied to clipboard!');
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }).catch(() => {
+      toast.error('Failed to copy content.');
+    });
+  };
+
+  return (
+    <li className="p-3 bg-gray-700 rounded-lg">
+      <p className="text-sm font-semibold text-white">
+        <Link href={`/prompts/${version.promptId}`} className="hover:underline">
+          {version.promptName}
+        </Link>
+        <span className="text-xs font-normal text-green-400 ml-2">v{version.version}</span>
+      </p>
+      <p className="text-sm text-gray-300 italic my-1">"{version.commit_message}"</p>
+      <p className="text-xs text-gray-500 mb-3">
+        {version.created_at ? timeAgo(new Date(version.created_at.seconds * 1000)) : 'Just now'}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href={`/prompts/${version.promptId}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+          View
+        </Link>
+        <button 
+          onClick={handleCopy}
+          className={`px-3 py-1 text-xs rounded transition-colors ${isCopied ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'}`}
+        >
+          {isCopied ? 'Copied!' : 'Copy'}
+        </button>
+        <button 
+          onClick={() => handleDeletePrompt(version.promptId)}
+          className="px-3 py-1 text-xs bg-red-600/60 text-white rounded hover:bg-red-700/80"
+        >
+          Delete
+        </button>
+        <div className="flex items-center gap-2 ml-auto">
+            <span className="text-xs text-gray-400">Send to:</span>
+            <SendToLlm promptText={version.prompt_text} />
+        </div>
+      </div>
+    </li>
+  );
 };
 
 interface RecentActivityWidgetProps {
@@ -28,15 +80,6 @@ interface RecentActivityWidgetProps {
 }
 
 const RecentActivityWidget = ({ recentVersions, loading, error, handleDeletePrompt }: RecentActivityWidgetProps) => {
-  const [copiedVersionId, setCopiedVersionId] = useState<string | null>(null);
-
-  const handleCopy = (text: string, versionId: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedVersionId(versionId);
-      setTimeout(() => setCopiedVersionId(null), 2000);
-    });
-  };
-
   if (loading) {
     return (
       <div className="bg-gray-800 p-4 rounded-lg h-full">
@@ -65,41 +108,7 @@ const RecentActivityWidget = ({ recentVersions, loading, error, handleDeleteProm
       ) : (
         <ul className="space-y-3">
           {recentVersions.map((v) => (
-            <li key={`${v.promptId}-${v.id}`} className="p-3 bg-gray-700 rounded-lg">
-              <p className="text-sm font-semibold text-white">
-                <Link href={`/prompts/${v.promptId}`} className="hover:underline">
-                  {v.promptName}
-                </Link>
-                <span className="text-xs font-normal text-green-400 ml-2">v{v.version}</span>
-              </p>
-              <p className="text-sm text-gray-300 italic my-1">"{v.commit_message}"</p>
-              <p className="text-xs text-gray-500 mb-3">
-                {v.created_at ? timeAgo(new Date(v.created_at.seconds * 1000)) : 'Just now'}
-              </p>
-              {/* --- MODIFIED: Horizontal layout for buttons --- */}
-              <div className="flex flex-wrap items-center gap-2">
-                <Link href={`/prompts/${v.promptId}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                  View
-                </Link>
-                <button 
-                  onClick={() => handleCopy(v.prompt_text, v.id)}
-                  className={`px-3 py-1 text-xs rounded transition-colors ${copiedVersionId === v.id ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'}`}
-                >
-                  {copiedVersionId === v.id ? 'Copied!' : 'Copy'}
-                </button>
-                 <button 
-                  onClick={() => handleDeletePrompt(v.promptId)}
-                  className="px-3 py-1 text-xs bg-red-600/60 text-white rounded hover:bg-red-700/80"
-                >
-                  Delete
-                </button>
-                {/* --- NEW: SendToLlm with updated styling for horizontal integration --- */}
-                <div className="flex items-center gap-2 ml-auto"> {/* Added ml-auto to push to right */}
-                    <span className="text-xs text-gray-400">Send to:</span>
-                    <SendToLlm promptText={v.prompt_text} />
-                </div>
-              </div>
-            </li>
+            <RecentActivityItem key={`${v.promptId}-${v.id}`} version={v} handleDeletePrompt={handleDeletePrompt} />
           ))}
         </ul>
       )}
@@ -108,3 +117,4 @@ const RecentActivityWidget = ({ recentVersions, loading, error, handleDeleteProm
 };
 
 export default RecentActivityWidget;
+
