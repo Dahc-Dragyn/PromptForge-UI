@@ -8,10 +8,10 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import Modal from './Modal';
 import QuickExecuteModal from './QuickExecuteModal';
-import toast from 'react-hot-toast'; // Import toast
+import toast from 'react-hot-toast';
 
-const API_COMPOSE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/templates/compose`;
-const API_EXECUTE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`;
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
+const API_EXECUTE_URL = `${API_BASE_URL}/prompts/execute`;
 
 const STYLE_OPTIONS = [
   "professional", "humorous", "academic", "Direct Instruction", "Scenario-Based",
@@ -21,8 +21,14 @@ const STYLE_OPTIONS = [
   "Analytical", "Interactive Dialogue"
 ];
 
+interface Template {
+  id: string;
+  name: string;
+  tags: string[];
+}
+
 interface PromptComposerProps {
-  templates: any[];
+  templates: Template[];
   onPromptSaved?: () => void;
   initialPrompt?: string;
 }
@@ -61,21 +67,12 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   const [taskSaved, setTaskSaved] = useState(false);
   const [isExecuteModalOpen, setIsExecuteModalOpen] = useState(false);
   const [isGeneratingDetails, setIsGeneratingDetails] = useState(false);
-  // --- NEW: State for the A/B test variation generation ---
   const [isGeneratingForSandbox, setIsGeneratingForSandbox] = useState(false);
 
 
   useEffect(() => {
-    if (composedPrompt !== initialPrompt) {
-        const params = new URLSearchParams(window.location.search);
-        if (composedPrompt) {
-            params.set('prompt', composedPrompt);
-        } else {
-            params.delete('prompt');
-        }
-        router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
-    }
-  }, [composedPrompt, initialPrompt, router]);
+    setComposedPrompt(initialPrompt);
+  }, [initialPrompt]);
 
   useEffect(() => {
     if (selectedStyle) {
@@ -131,7 +128,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
     setError(null);
     setComposedPrompt('');
     try {
-      const response = await fetch(API_COMPOSE_URL, {
+      const response = await fetch(`${API_BASE_URL}/templates/compose`, {
         method: 'POST',
         headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
         body: JSON.stringify({ persona: personaTag, task: taskTag }),
@@ -176,8 +173,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
 
     } catch (err) {
       console.error("Failed to generate details:", err);
-      setNewPromptName('');
-      setNewPromptDescription('');
     } finally {
       setIsGeneratingDetails(false);
     }
@@ -204,7 +199,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
     try {
       const docRef = await addDoc(collection(db, 'prompts'), newPrompt);
       
-      const versionsUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${docRef.id}/versions`;
+      const versionsUrl = `${API_BASE_URL}/prompts/${docRef.id}/versions`;
       const versionResponse = await fetch(versionsUrl, {
         method: 'POST',
         headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
@@ -221,44 +216,48 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
       if (onPromptSaved) onPromptSaved();
 
       setIsSavePromptModalOpen(false);
-      setNewPromptName('');
-      setNewPromptDescription('');
+      toast.success(`Prompt "${newPromptName}" saved!`);
 
     } catch (err: any) {
       setError(`Failed to save the new prompt: ${err.message}`);
+      toast.error(`Failed to save: ${err.message}`);
       console.error(err);
     } finally {
       setIsSavingPrompt(false);
     }
   };
 
-  const handleSavePersonaTemplate = async () => {
-    setIsSavingPersona(true);
+  // --- FIX: Create a single, unified function to handle saving both template types ---
+  const handleSaveTemplate = async (type: 'persona' | 'task') => {
+    const isPersona = type === 'persona';
+    if (isPersona) setIsSavingPersona(true);
+    else setIsSavingTask(true);
+    
     setError(null);
-    try {
-        const personaTemplate = { name: newPersonaName, description: `AI-generated persona for goal: ${recommendationGoal}`, content: aiSuggestedPersona, tags: ['persona', 'ai-generated'], created_at: serverTimestamp(), isArchived: false };
-        await addDoc(collection(db, 'prompt_templates'), personaTemplate);
-        setPersonaSaved(true);
-    } catch (err) {
-        setError('Failed to save Persona template.');
-        console.error(err);
-    } finally {
-        setIsSavingPersona(false);
-    }
-  };
 
-  const handleSaveTaskTemplate = async () => {
-    setIsSavingTask(true);
-    setError(null);
     try {
-        const taskTemplate = { name: newTaskName, description: `AI-generated task for goal: ${recommendationGoal}`, content: aiSuggestedTask, tags: ['task', 'ai-generated'], created_at: serverTimestamp(), isArchived: false };
-        await addDoc(collection(db, 'prompt_templates'), taskTemplate);
-        setTaskSaved(true);
+        const template = {
+            name: isPersona ? newPersonaName : newTaskName,
+            description: `AI-generated ${type} for goal: ${recommendationGoal}`,
+            content: isPersona ? aiSuggestedPersona : aiSuggestedTask,
+            tags: [type, 'ai-generated'],
+            created_at: serverTimestamp(),
+            isArchived: false
+        };
+        await addDoc(collection(db, 'prompt_templates'), template);
+        
+        if (isPersona) setPersonaSaved(true);
+        else setTaskSaved(true);
+
+        toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} template saved!`);
     } catch (err) {
-        setError('Failed to save Task template.');
+        const errorMsg = `Failed to save ${type} template.`;
+        setError(errorMsg);
+        toast.error(errorMsg);
         console.error(err);
     } finally {
-        setIsSavingTask(false);
+        if (isPersona) setIsSavingPersona(false);
+        else setIsSavingTask(false);
     }
   };
 
@@ -274,10 +273,10 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
     setError(null);
     setShowSuggestionUI(false);
     setComposedPrompt('');
-    setLoading(true);
+    const toastId = toast.loading('Generating AI components...');
     try {
-      const personaMetaPrompt = `Based on the user's goal, generate a single paragraph describing a suitable "persona" for an AI assistant. The goal is: "${recommendationGoal}"`;
-      const taskMetaPrompt = `Based on the user's goal, generate a single paragraph describing the specific "task" for an AI assistant to perform. The goal is: "${recommendationGoal}"`;
+      const personaMetaPrompt = `Based on the user's goal, generate a concise "persona" for an AI assistant in 2-3 sentences. The goal is: "${recommendationGoal}"`;
+      const taskMetaPrompt = `Based on the user's goal, generate a concise "task" for an AI assistant to perform in 2-3 sentences. The goal is: "${recommendationGoal}"`;
       const nameMetaPrompt = `Based on the user's goal, generate a short, descriptive, 3-5 word title for a prompt template. Do not use quotes. The goal is: "${recommendationGoal}"`;
 
       const [personaRes, taskRes, nameRes] = await Promise.all([
@@ -303,11 +302,12 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
       setNewPersonaName(`${generatedName} - Persona`);
       setNewTaskName(`${generatedName} - Task`);
       setShowSuggestionUI(true);
+      toast.success('AI components generated!', { id: toastId });
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message, { id: toastId });
     } finally {
       setIsRecommending(false);
-      setLoading(false);
     }
   };
 
@@ -330,18 +330,16 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   const isComposeDisabled = loading || !selectedPersonaId || !selectedTaskId;
 
   const handleSendToPage = async (path: string, tool?: string) => {
-    // If the target isn't the sandbox, or if there's no prompt, use the simple logic.
     if (path !== '/sandbox' || !composedPrompt) {
       const encodedPrompt = encodeURIComponent(composedPrompt);
-      let url = `${path}?prompt=${encodedPrompt}`;
+      let url = `${path}?promptA=${encodedPrompt}`;
       if (tool) url += `&tool=${tool}`;
       router.push(url);
       return;
     }
 
-    // --- Sandbox-specific logic ---
     setIsGeneratingForSandbox(true);
-    toast.loading('Generating a variation for A/B testing...');
+    const toastId = toast.loading('Generating a variation for A/B testing...');
 
     const metaPrompt = `Based on the following prompt, generate one new, distinct variation. The new variation should aim to achieve the same goal but use a different approach (e.g., be more concise, more detailed, use a different tone, or add a new constraint). Only output the new prompt text, with no extra commentary.\n\nOriginal Prompt:\n"${composedPrompt}"`;
 
@@ -360,13 +358,11 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
         const originalEncoded = encodeURIComponent(composedPrompt);
         const variationEncoded = encodeURIComponent(data.generated_text);
         
-        toast.dismiss();
-        toast.success('Variation generated! Opening Sandbox...');
-        router.push(`/sandbox?prompt=${originalEncoded}&prompt=${variationEncoded}`);
+        toast.success('Variation generated! Opening Sandbox...', { id: toastId });
+        router.push(`/sandbox?promptA=${originalEncoded}&promptB=${variationEncoded}`);
 
     } catch (err: any) {
-        toast.dismiss();
-        toast.error(`Failed to generate variation: ${err.message}`);
+        toast.error(`Failed to generate variation: ${err.message}`, { id: toastId });
         console.error(err);
     } finally {
         setIsGeneratingForSandbox(false);
@@ -382,7 +378,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   return (
     <>
       <div className="bg-gray-800 p-4 rounded-lg flex flex-col h-full">
-        {/* --- SECTION 1: AI Assistant --- */}
+        {/* SECTION 1: AI Assistant */}
         <div className="p-4 border border-dashed border-sky-400/50 rounded-lg mb-6">
           <h3 className="font-semibold text-lg mb-2 text-sky-300">AI Assistant</h3>
           <p className="text-sm text-gray-400 mb-2">Describe your goal and let the AI generate and compose a prompt for you.</p>
@@ -418,7 +414,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
           )}
         </div>
 
-        {/* --- SECTION 2: Composed Prompt (Output) --- */}
+        {/* SECTION 2: Composed Prompt (Output) */}
         {composedPrompt && (
           <div className="mb-6 p-6 border rounded-lg bg-gray-900 border-gray-700 relative flex-grow flex flex-col">
             <div className="flex justify-between items-center mb-4">
@@ -448,7 +444,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
           </div>
         )}
 
-        {/* --- SECTION 3: Manual Composer --- */}
+        {/* SECTION 3: Manual Composer */}
         <div>
           <h2 className="text-2xl font-bold mb-4">Manual Composer</h2>
           <div className="space-y-4">
@@ -491,7 +487,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
         </div>
       </div>
 
-      {/* Modals remain at the end */}
+      {/* Modals */}
       <Modal isOpen={isSavePromptModalOpen} onClose={() => setIsSavePromptModalOpen(false)} title="Save New Prompt">
         <form onSubmit={handleSavePrompt}>
           {error && <p className="text-red-400 mb-4 text-center">{error}</p>}
@@ -519,7 +515,8 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
                 <label htmlFor="new-persona-name" className="block text-sm font-medium text-gray-300 mb-1">Persona Template Name</label>
                 <div className="flex gap-2 items-center">
                     <input id="new-persona-name" type="text" value={newPersonaName} onChange={(e) => setNewPersonaName(e.target.value)} className="flex-grow border rounded p-2 text-black bg-gray-200" required />
-                    <button type="button" onClick={handleSavePersonaTemplate} disabled={isSavingPersona || personaSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${personaSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
+                    {/* --- FIX: Call the unified handleSaveTemplate function --- */}
+                    <button type="button" onClick={() => handleSaveTemplate('persona')} disabled={isSavingPersona || personaSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${personaSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
                         {isSavingPersona ? 'Saving...' : personaSaved ? 'Saved!' : 'Save'}
                     </button>
                 </div>
@@ -528,7 +525,8 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
                 <label htmlFor="new-task-name" className="block text-sm font-medium text-gray-300 mb-1">Task Template Name</label>
                 <div className="flex gap-2 items-center">
                     <input id="new-task-name" type="text" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} className="flex-grow border rounded p-2 text-black bg-gray-200" required />
-                    <button type="button" onClick={handleSaveTaskTemplate} disabled={isSavingTask || taskSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${taskSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
+                    {/* --- FIX: Call the unified handleSaveTemplate function --- */}
+                    <button type="button" onClick={() => handleSaveTemplate('task')} disabled={isSavingTask || taskSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${taskSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
                          {isSavingTask ? 'Saving...' : taskSaved ? 'Saved!' : 'Save'}
                     </button>
                 </div>

@@ -1,24 +1,32 @@
 // src/components/RatingModal.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import Modal from './Modal';
 import { StarIcon } from '@heroicons/react/24/solid';
+import toast from 'react-hot-toast';
 
 const API_EXECUTE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`;
+
+// --- FIX: Define a strong type for the version prop for better type safety ---
+interface Version {
+  version: number;
+  prompt_text: string;
+  commit_message: string;
+}
 
 interface RatingModalProps {
   isOpen: boolean;
   onClose: () => void;
   promptId: string;
-  version: any;
+  version: Version | null; // Use the new, strongly-typed Version
+  userId?: string;
 }
 
-const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) => {
-  const { user } = useAuth();
+const RatingModal = ({ isOpen, onClose, promptId, version, userId }: RatingModalProps) => {
   const [result, setResult] = useState<{ text: string; latency: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +36,21 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
+  // --- FIX: Add an effect to reset the modal's state when it opens ---
+  useEffect(() => {
+    if (isOpen) {
+      setResult(null);
+      setIsLoading(false);
+      setError(null);
+      setCurrentRating(0);
+      setHoverRating(0);
+      setIsSubmitting(false);
+      setShowSuccess(false);
+    }
+  }, [isOpen]);
+
   const handleExecute = async () => {
+    if (!version) return;
     setIsLoading(true);
     setError(null);
     setResult(null);
@@ -60,7 +82,7 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
   };
 
   const handleRatingSubmit = async (newRating: number) => {
-    if (!user || !result || isSubmitting) return;
+    if (!userId || !result || isSubmitting || !version) return;
 
     setIsSubmitting(true);
     setCurrentRating(newRating);
@@ -68,35 +90,40 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
     const newMetric = {
       source: 'version_testing',
       promptId: promptId,
-      promptVersion: version?.version ?? -1, // Safeguard against undefined
+      promptVersion: version.version,
       promptText: version.prompt_text,
       generatedText: result.text,
       model: 'default',
       latency: result.latency,
       rating: newRating,
       createdAt: serverTimestamp(),
-      userId: user.uid,
+      userId: userId,
     };
 
     try {
       await addDoc(collection(db, 'prompt_metrics'), newMetric);
       setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 2000);
+      setTimeout(() => {
+        setShowSuccess(false);
+      }, 2000);
     } catch (error) {
       console.error("Rating submission failed:", error);
-      setCurrentRating(0); // Revert on failure
-      alert("Failed to save rating. Please try again.");
+      setCurrentRating(0);
+      toast.error("Failed to save rating. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  if (!version) return null;
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Test & Rate Prompt Version ${version?.version}`}>
+    <Modal isOpen={isOpen} onClose={onClose} title={`Test & Rate Prompt Version ${version.version}`}>
       <div className="space-y-4 text-white">
         <div>
+          <p className="text-sm text-gray-400 mb-2">Commit: <span className="italic text-gray-300">"{version.commit_message}"</span></p>
           <label className="block text-sm font-medium text-gray-400 mb-1">Prompt Text</label>
-          <pre className="whitespace-pre-wrap text-gray-200 bg-gray-900 p-3 rounded-md text-sm font-sans max-h-32 overflow-y-auto">
+          <pre className="whitespace-pre-wrap text-gray-200 bg-gray-900 p-3 rounded-md text-sm font-mono max-h-32 overflow-y-auto">
             {version.prompt_text}
           </pre>
         </div>
@@ -105,7 +132,7 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
           <button 
             onClick={handleExecute} 
             disabled={isLoading}
-            className="w-full py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 font-semibold"
+            className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-semibold transition-colors"
           >
             {isLoading ? 'Executing...' : 'Execute Prompt'}
           </button>
@@ -116,14 +143,13 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
         {result && (
           <div className="mt-4 space-y-4">
             <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Result (Latency: {Math.round(result.latency)}ms)</label>
-                <div className="text-gray-200 bg-gray-900 p-3 rounded-md whitespace-pre-wrap max-h-48 overflow-y-auto">
-                    {result.text}
-                </div>
+              <label className="block text-sm font-medium text-gray-400 mb-1">Result (Latency: {Math.round(result.latency)}ms)</label>
+              <div className="text-gray-200 bg-gray-900 p-3 rounded-md whitespace-pre-wrap max-h-48 overflow-y-auto font-mono text-sm">
+                  {result.text}
+              </div>
             </div>
 
             <div>
-              {/* --- UPDATED TEXT --- */}
               <h4 className="text-sm font-semibold text-gray-300 mb-2">Based on this output, rate the prompt:</h4>
               <div className="flex items-center space-x-1">
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -144,14 +170,14 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
                     />
                   </button>
                 ))}
-                {showSuccess && <p className="ml-4 text-xs text-green-400">Rating saved!</p>}
+                {showSuccess && <p className="ml-4 text-xs text-green-400 animate-pulse">Rating saved!</p>}
               </div>
             </div>
 
             <button 
                 onClick={handleExecute} 
                 disabled={isLoading}
-                className="w-full py-2 bg-gray-600 text-white rounded hover:bg-gray-500 disabled:opacity-50 font-semibold text-sm"
+                className="w-full py-2 bg-gray-600 text-white rounded hover:bg-gray-500 disabled:opacity-50 font-semibold text-sm transition-colors"
               >
                 {isLoading ? 'Executing...' : 'Run Again'}
             </button>

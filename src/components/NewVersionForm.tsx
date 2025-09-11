@@ -2,10 +2,11 @@
 'use client';
 
 import { useState } from 'react';
+import toast from 'react-hot-toast';
 
 interface NewVersionFormProps {
   promptId: string;
-  onVersionCreated: () => void; // Callback to refresh the versions list
+  onVersionCreated: () => void;
 }
 
 const NewVersionForm = ({ promptId, onVersionCreated }: NewVersionFormProps) => {
@@ -13,13 +14,12 @@ const NewVersionForm = ({ promptId, onVersionCreated }: NewVersionFormProps) => 
   const [commitMessage, setCommitMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
-    setSuccess(null);
+    const toastId = toast.loading('Creating new version...');
 
     const apiUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}/versions`;
 
@@ -32,7 +32,7 @@ const NewVersionForm = ({ promptId, onVersionCreated }: NewVersionFormProps) => 
         },
         body: JSON.stringify({
           prompt_text: promptText,
-          commit_message: commitMessage,
+          commit_message: commitMessage || 'No commit message.', // Provide a default
         }),
       });
 
@@ -41,57 +41,57 @@ const NewVersionForm = ({ promptId, onVersionCreated }: NewVersionFormProps) => 
         throw new Error(data.detail || 'Failed to create new version.');
       }
       
-      setSuccess(`Successfully created Version ${data.version}!`);
+      toast.success(`Successfully created Version ${data.version}!`, { id: toastId });
       onVersionCreated(); // Trigger the refresh on the parent page
       
-      // Reset form
-      setPromptText('');
-      setCommitMessage('');
-
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message, { id: toastId });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-6 border rounded-lg bg-gray-800 mb-8">
-      <h2 className="text-2xl font-bold mb-4">Create a New Version</h2>
-      {error && <p className="text-red-500 mb-2 text-sm">{error}</p>}
-      {success && <p className="text-green-500 mb-2 text-sm">{success}</p>}
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {error && <p className="text-red-400 text-sm">{error}</p>}
 
-      <div className="mb-4">
-        <label htmlFor="prompt-text" className="block text-sm font-medium mb-1">New Prompt Text</label>
+      <div>
+        <label htmlFor="prompt-text" className="block text-sm font-medium mb-1 text-gray-300">New Prompt Text</label>
         <textarea 
           id="prompt-text" 
           value={promptText} 
           onChange={(e) => setPromptText(e.target.value)} 
-          className="w-full border rounded p-2 text-black bg-gray-200 font-mono" 
+          // --- FIX: Updated styling for dark mode ---
+          className="w-full border rounded p-2 bg-gray-900 text-gray-200 border-gray-600 font-mono" 
           rows={10} 
           required 
         />
       </div>
 
-      <div className="mb-4">
-        <label htmlFor="commit-message" className="block text-sm font-medium mb-1">Commit Message (Optional)</label>
+      <div>
+        <label htmlFor="commit-message" className="block text-sm font-medium mb-1 text-gray-300">Commit Message</label>
         <input 
           id="commit-message" 
           type="text" 
           value={commitMessage} 
           onChange={(e) => setCommitMessage(e.target.value)} 
-          className="w-full border rounded p-2 text-black bg-gray-200"
+          // --- FIX: Updated styling for dark mode ---
+          className="w-full border rounded p-2 bg-gray-900 text-gray-200 border-gray-600"
           placeholder="e.g., Added more specific constraints"
+          required
         />
       </div>
 
-      <button 
-        type="submit" 
-        disabled={isSubmitting || !promptText} 
-        className="w-full mt-2 px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50 hover:bg-green-700 transition-colors"
-      >
-        {isSubmitting ? 'Saving...' : 'Save New Version'}
-      </button>
+      <div className="pt-2 flex justify-end">
+        <button 
+          type="submit" 
+          disabled={isSubmitting || !promptText || !commitMessage} 
+          className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50 hover:bg-blue-700 transition-colors font-semibold"
+        >
+          {isSubmitting ? 'Saving...' : 'Save New Version'}
+        </button>
+      </div>
     </form>
   );
 };

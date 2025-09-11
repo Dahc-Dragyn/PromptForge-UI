@@ -2,12 +2,12 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Modal from '@/components/Modal';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { TrashIcon } from '@heroicons/react/24/outline';
+import { TrashIcon, SparklesIcon } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
 
 const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
@@ -17,7 +17,6 @@ const AVAILABLE_MODELS = [
     { id: 'gpt-4.1-nano', name: 'OpenAI GPT-4.1 Nano' },
 ];
 
-// --- NEW: Expanded list of response styles ---
 const RESPONSE_STYLES = [
     { value: 'default', label: 'Default' },
     { value: 'concise', label: 'Concise', instruction: 'System Note: Respond as concisely as possible.' },
@@ -62,8 +61,13 @@ function SandboxContent() {
     const [isGeneratingVariation, setIsGeneratingVariation] = useState(false);
 
     useEffect(() => {
+        const promptFromVersionPage = searchParams.get('promptA');
+        const promptBFromUrl = searchParams.get('promptB');
         const promptsFromUrl = searchParams.getAll('prompt');
-        if (promptsFromUrl.length > 0) {
+        
+        if (promptFromVersionPage) {
+            setPrompts([decodeURIComponent(promptFromVersionPage), promptBFromUrl ? decodeURIComponent(promptBFromUrl) : '']);
+        } else if (promptsFromUrl.length > 0) {
             const decoded = promptsFromUrl.map(p => decodeURIComponent(p));
             while (decoded.length < 2) {
                 decoded.push('');
@@ -114,7 +118,7 @@ function SandboxContent() {
             const data = await response.json();
             if (!response.ok) throw new Error(data.detail || 'Failed to generate variation.');
             
-            setPrompts([...prompts, data.generated_text]);
+            setPrompts([...prompts, data.generated_text.trim().replace(/^"|"$/g, '')]);
             toast.success('AI variation added!', { id: toastId });
         } catch (error: any) {
             toast.error(`Error: ${error.message}`, { id: toastId });
@@ -126,21 +130,29 @@ function SandboxContent() {
     const runAbTest = async () => {
         setLoading(true);
         setResults([]);
-        const activePrompts = prompts.filter(p => p.trim() !== '');
+        
+        const activePrompts = prompts.map(p => p.trim()).filter(p => p !== '');
+        if (activePrompts.length === 0) {
+            toast.error("Please provide at least one prompt to test.");
+            setLoading(false);
+            return;
+        }
 
-        const getModifiedPrompt = (promptText: string, style: string): string => {
-            const selectedStyle = RESPONSE_STYLES.find(s => s.value === style);
+        const getModifiedPrompt = (promptText: string): string => {
+            const selectedStyle = RESPONSE_STYLES.find(s => s.value === responseStyle);
+            let processedText = promptText.replace(/{shared_input}/g, sharedInput);
             if (selectedStyle && selectedStyle.instruction) {
-                return `${selectedStyle.instruction}\n\n---\n\n${promptText}`;
+                return `${selectedStyle.instruction}\n\n---\n\n${processedText}`;
             }
-            return promptText;
+            return processedText;
         };
 
         const payload = {
-            prompts: activePrompts.map((p, i) => ({ 
-                id: `v${i+1}`, 
-                text: getModifiedPrompt(p, responseStyle)
-            })),
+            prompts: prompts.map((p, i) => ({ 
+                id: `v${i}`, 
+                text: getModifiedPrompt(p)
+            })).filter(p => p.text.trim() !== ''),
+            // --- FIX: Restore the 'input_text' field required by the backend ---
             input_text: sharedInput,
             model: selectedModel,
         };
@@ -154,15 +166,26 @@ function SandboxContent() {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.detail || 'An API error occurred.');
+                let errorMessage = 'An API error occurred.';
+                if (errorData.detail) {
+                    if (typeof errorData.detail === 'string') {
+                        errorMessage = errorData.detail;
+                    } else if (Array.isArray(errorData.detail) && errorData.detail[0]?.msg) {
+                        errorMessage = errorData.detail[0].msg;
+                    } else {
+                        errorMessage = JSON.stringify(errorData.detail);
+                    }
+                }
+                throw new Error(errorMessage);
             }
 
             const data = await response.json();
             const formattedResults = data.results.map((res: any) => ({
-                variationIndex: parseInt(res.prompt_id.replace('v', ''), 10) -1,
+                variationIndex: parseInt(res.prompt_id.replace('v', ''), 10),
                 output: res.generated_text,
                 latency: Math.round(res.latency_ms),
                 token_count: res.total_tokens || 0,
+                error: res.error,
             }));
             setResults(formattedResults);
 
@@ -196,6 +219,7 @@ function SandboxContent() {
             setNewPromptDescription(descData.generated_text.trim());
         } catch (err) {
             console.error("Failed to generate details:", err);
+            toast.error("Could not auto-generate details. Please enter them manually.");
         } finally {
             setIsGeneratingDetails(false);
         }
@@ -252,7 +276,7 @@ function SandboxContent() {
                                     <div className="flex justify-between items-center mb-2">
                                         <label className="block text-lg font-bold text-gray-800">Prompt Variation #{index + 1}</label>
                                         {prompts.length > 2 && (
-                                            <button onClick={() => removePromptVariation(index)} className="p-1 text-red-500 hover:text-red-700">
+                                            <button onClick={() => removePromptVariation(index)} className="p-1 text-red-500 hover:text-red-700" title="Remove Variation">
                                                 <TrashIcon className="h-5 w-5" />
                                             </button>
                                         )}
@@ -264,7 +288,7 @@ function SandboxContent() {
                                         rows={8}
                                         placeholder={`Enter variation #${index + 1} here...`}
                                     />
-                                    <button onClick={() => handleOpenSaveModal(prompt)} disabled={!prompt} className="w-full mt-2 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-semibold">Save as Prompt...</button>
+                                    <button onClick={() => handleOpenSaveModal(prompt)} disabled={!prompt.trim()} className="w-full mt-2 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-semibold">Save as Prompt...</button>
                                 </div>
                             ))}
                         </div>
@@ -273,8 +297,9 @@ function SandboxContent() {
                             {prompts.length < 4 && (
                                 <div className="flex gap-4">
                                   <button onClick={addPromptVariation} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 font-semibold">+ Add Variation</button>
-                                  <button onClick={addAiVariation} disabled={isGeneratingVariation} className="px-4 py-2 bg-sky-600 text-white rounded hover:bg-sky-700 font-semibold disabled:opacity-50">
-                                      {isGeneratingVariation ? 'Generating...' : '✨ Add AI Variation'}
+                                  <button onClick={addAiVariation} disabled={isGeneratingVariation} className="px-4 py-2 bg-sky-600 text-white rounded hover:bg-sky-700 font-semibold disabled:opacity-50 flex items-center gap-2">
+                                    <SparklesIcon className="h-5 w-5" />
+                                    {isGeneratingVariation ? 'Generating...' : 'Add AI Variation'}
                                   </button>
                                 </div>
                             )}
@@ -283,7 +308,7 @@ function SandboxContent() {
                         <div className="mt-8 border-t pt-6">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
                                 <div>
-                                    <label htmlFor="shared-input" className="block text-sm font-medium text-gray-700 mb-1">Shared Input Text (Optional)</label>
+                                    <label htmlFor="shared-input" className="block text-sm font-medium text-gray-700 mb-1">Shared Input Text <span className="text-gray-500">(use `&#123;shared_input&#125;`)</span></label>
                                     <textarea id="shared-input" value={sharedInput} onChange={(e) => setSharedInput(e.target.value)} className="w-full border rounded p-2 text-black border-gray-300" rows={3} placeholder="Provide common input..."/>
                                 </div>
                                 <div>
@@ -308,12 +333,12 @@ function SandboxContent() {
                     {results.length > 0 && (
                         <div className="mt-10">
                             <h2 className="text-3xl font-bold mb-6 text-center">Test Results</h2>
-                            <div className={`grid grid-cols-1 md:grid-cols-2 ${prompts.length > 2 ? 'lg:grid-cols-2' : ''} gap-6`}>
-                                {results.map((result) => (
+                            <div className={`grid grid-cols-1 ${results.length > 1 ? 'md:grid-cols-2' : ''} gap-6`}>
+                                {results.sort((a, b) => a.variationIndex - b.variationIndex).map((result) => (
                                     <div key={result.variationIndex} className="bg-gray-800 rounded-lg p-5 flex flex-col border border-gray-700">
                                         <h3 className="text-xl font-semibold text-white mb-3">Result for Variation #{result.variationIndex + 1}</h3>
                                         <div className="flex items-center justify-between text-sm mb-4 bg-gray-900 px-3 py-2 rounded-md">
-                                            <div className='flex gap-4'>
+                                            <div className='flex flex-wrap gap-4'>
                                                 <span className="text-gray-400 font-medium">Latency: <span className="text-cyan-400">{result.latency}ms</span></span>
                                                 {result.token_count > 0 && (
                                                     <span className="text-gray-400 font-medium">Tokens: <span className="text-cyan-400">{result.token_count}</span></span>

@@ -10,7 +10,7 @@ interface QuickExecuteModalProps {
   isOpen: boolean;
   onClose: () => void;
   promptText: string;
-  onSaveAsPrompt: (promptContent: string) => void; // <-- NEW: Function to handle saving
+  onSaveAsPrompt: (promptContent: string) => void;
 }
 
 const findVariables = (text: string): string[] => {
@@ -21,7 +21,6 @@ const findVariables = (text: string): string[] => {
 };
 
 const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: QuickExecuteModalProps) => {
-  // NEW: State to hold the editable version of the prompt
   const [editablePrompt, setEditablePrompt] = useState(promptText);
   const [variableValues, setVariableValues] = useState<{ [key: string]: string }>({});
   const [result, setResult] = useState<string | null>(null);
@@ -35,7 +34,7 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
       setResult(null);
       setError(null);
       setIsLoading(false);
-      setEditablePrompt(promptText); // Reset the text when modal opens
+      setEditablePrompt(promptText);
       const initialValues: { [key: string]: string } = {};
       findVariables(promptText).forEach(v => {
         initialValues[v] = '';
@@ -82,7 +81,6 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
       <div className="space-y-4">
         <div>
           <label htmlFor="prompt-template-editor" className="block text-sm font-medium text-gray-300 mb-1">Prompt Template (Editable)</label>
-          {/* NEW: Changed from <pre> to <textarea> */}
           <textarea
             id="prompt-template-editor"
             value={editablePrompt}
@@ -119,7 +117,6 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
             >
               {isLoading ? 'Executing...' : 'Run'}
             </button>
-            {/* NEW: Save as Prompt button */}
             <button 
               onClick={() => onSaveAsPrompt(editablePrompt)}
               disabled={isLoading}
@@ -134,7 +131,8 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
         {result && (
           <div className="mt-4">
             <h4 className="font-semibold text-green-400 mb-2">Result</h4>
-            <div className="text-sm bg-gray-900 p-3 rounded-md whitespace-pre-wrap max-h-48 overflow-y-auto">
+            {/* --- FIX: Added text-gray-200 for visibility --- */}
+            <div className="text-sm bg-gray-900 text-gray-200 p-3 rounded-md whitespace-pre-wrap max-h-48 overflow-y-auto">
               {result}
             </div>
           </div>
