@@ -10,6 +10,7 @@ import BreakdownResult from '@/components/BreakdownResult';
 import Modal from '@/components/Modal';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import toast from 'react-hot-toast';
 
 const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts`;
 
@@ -97,12 +98,31 @@ function AnalyzeContent() {
   const handleGenerateExample = async () => {
     if (!taskDescription) {
       setError("Please provide a Task Description before generating an example.");
+      toast.error("Please provide a Task Description before generating an example.");
       return;
     }
     setIsGeneratingExample(true);
     setError(null);
+    const toastId = toast.loading('Generating AI example...');
 
-    const metaPrompt = `You are an assistant that creates examples for a prompt engineering tool. The user's task is: "${taskDescription}". The user wants to generate an example that specifically focuses on: "${exampleFocus}". Generate a single, simple, clear, and concise JSON object with two keys: "input" and "output" that clearly demonstrates this. Do not provide any explanation or text outside of the JSON object. The example should be suitable for demonstrating the core task, not a comprehensive breakdown.`;
+    // --- BUG FIX: Re-engineered meta-prompt for concise examples ---
+    const metaPrompt = `
+System Directive: Generate a simple JSON example for a prompt engineering tool.
+User's Task: "${taskDescription}"
+Example Focus: "${exampleFocus}"
+
+CRITICAL INSTRUCTIONS:
+1. Create an extremely simple and concise JSON object with two keys: "input" and "output".
+2. The "input" and "output" values should be short, ideally one sentence or a few words.
+3. DO NOT provide a long, detailed, or multi-paragraph answer in the "output" field. The goal is to show an *example of the task*, not to perform the task exhaustively.
+4. Your entire response MUST be ONLY the raw JSON object. Do not include markdown like \`\`\`json, explanations, or any other text.
+
+Example of a good, simple output format for a task "Translate English to French":
+{
+  "input": "Hello, how are you?",
+  "output": "Bonjour, comment ça va?"
+}
+`;
 
     try {
       const response = await fetch(`${API_BASE_URL}/execute`, {
@@ -119,6 +139,9 @@ function AnalyzeContent() {
         jsonString = match[1];
       }
 
+      // Handle cases where the response might just be the JSON without backticks
+      jsonString = jsonString.substring(jsonString.indexOf('{'), jsonString.lastIndexOf('}') + 1);
+
       const generatedJson = JSON.parse(jsonString);
 
       const inputValue = typeof generatedJson.input === 'object' ? JSON.stringify(generatedJson.input, null, 2) : generatedJson.input;
@@ -126,11 +149,14 @@ function AnalyzeContent() {
 
       if (inputValue && outputValue) {
         setExamples(prevExamples => [...prevExamples, { input: inputValue, output: outputValue }]);
+        toast.success('AI example added!', { id: toastId });
       } else {
         throw new Error("AI response was not in the expected format.");
       }
     } catch (err: any) {
-      setError(`Failed to generate AI example: ${err.message}`);
+      const errorMessage = `Failed to generate AI example: ${err.message}`;
+      setError(errorMessage);
+      toast.error(errorMessage, { id: toastId });
     } finally {
       setIsGeneratingExample(false);
     }
@@ -163,6 +189,7 @@ function AnalyzeContent() {
     if (output?.optimized_prompt) {
       navigator.clipboard.writeText(output.optimized_prompt).then(() => {
         setCopyText('Copied!');
+        toast.success('Prompt copied to clipboard!');
         setTimeout(() => setCopyText('Copy Prompt'), 2000);
       });
     }
@@ -230,9 +257,11 @@ function AnalyzeContent() {
       if (!versionResponse.ok) throw new Error('Failed to save the initial prompt version.');
 
       setIsSaveModalOpen(false);
+      toast.success(`Prompt "${newPromptName}" saved!`);
       router.push('/dashboard');
     } catch (err: any) {
       setError(`Failed to save prompt: ${err.message}`);
+      toast.error(`Failed to save prompt: ${err.message}`);
     } finally {
       setIsSavingPrompt(false);
     }

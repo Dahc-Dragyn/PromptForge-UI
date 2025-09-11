@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import Modal from './Modal';
 import QuickExecuteModal from './QuickExecuteModal';
 import toast from 'react-hot-toast';
+import AutoSizingTextarea from './AutoSizingTextarea'; // --- BUG FIX: Import the new component ---
 
 const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 const API_EXECUTE_URL = `${API_BASE_URL}/prompts/execute`;
@@ -45,7 +46,15 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
-  const [composedPrompt, setComposedPrompt] = useState(initialPrompt);
+  
+  const [composedPrompt, setComposedPrompt] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedPrompt = sessionStorage.getItem('composedPrompt');
+      return savedPrompt || initialPrompt;
+    }
+    return initialPrompt;
+  });
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyText, setCopyText] = useState('Copy');
@@ -69,9 +78,14 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   const [isGeneratingDetails, setIsGeneratingDetails] = useState(false);
   const [isGeneratingForSandbox, setIsGeneratingForSandbox] = useState(false);
 
+  useEffect(() => {
+    sessionStorage.setItem('composedPrompt', composedPrompt);
+  }, [composedPrompt]);
 
   useEffect(() => {
-    setComposedPrompt(initialPrompt);
+    if (initialPrompt) {
+        setComposedPrompt(initialPrompt);
+    }
   }, [initialPrompt]);
 
   useEffect(() => {
@@ -227,7 +241,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
     }
   };
 
-  // --- FIX: Create a single, unified function to handle saving both template types ---
   const handleSaveTemplate = async (type: 'persona' | 'task') => {
     const isPersona = type === 'persona';
     if (isPersona) setIsSavingPersona(true);
@@ -275,9 +288,9 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
     setComposedPrompt('');
     const toastId = toast.loading('Generating AI components...');
     try {
-      const personaMetaPrompt = `Based on the user's goal, generate a concise "persona" for an AI assistant in 2-3 sentences. The goal is: "${recommendationGoal}"`;
-      const taskMetaPrompt = `Based on the user's goal, generate a concise "task" for an AI assistant to perform in 2-3 sentences. The goal is: "${recommendationGoal}"`;
-      const nameMetaPrompt = `Based on the user's goal, generate a short, descriptive, 3-5 word title for a prompt template. Do not use quotes. The goal is: "${recommendationGoal}"`;
+      const personaMetaPrompt = `Based on the user's goal, generate a concise "persona" for an AI assistant in 2-3 sentences. Crucially, do not include any preamble, introduction, or conversational text like "Certainly, here is a persona...". Output ONLY the text for the persona itself. The user's goal is: "${recommendationGoal}"`;
+      const taskMetaPrompt = `Based on the user's goal, generate a concise "task" for an AI assistant to perform in 2-3 sentences. Crucially, do not include any preamble, introduction, or conversational text like "Certainly, here is a task...". Output ONLY the text for the task itself. The user's goal is: "${recommendationGoal}"`;
+      const nameMetaPrompt = `Based on the user's goal, generate a short, descriptive, 3-5 word title for a prompt template. Do not use quotes or any surrounding text. Output only the title. The goal is: "${recommendationGoal}"`;
 
       const [personaRes, taskRes, nameRes] = await Promise.all([
         fetch(API_EXECUTE_URL, { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_text: personaMetaPrompt }) }),
@@ -330,44 +343,54 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
   const isComposeDisabled = loading || !selectedPersonaId || !selectedTaskId;
 
   const handleSendToPage = async (path: string, tool?: string) => {
-    if (path !== '/sandbox' || !composedPrompt) {
-      const encodedPrompt = encodeURIComponent(composedPrompt);
-      let url = `${path}?promptA=${encodedPrompt}`;
-      if (tool) url += `&tool=${tool}`;
-      router.push(url);
-      return;
+    // Corrected logic to handle A/B test case separately
+    if (path === '/sandbox' && tool !== 'ab_test') {
+        const encodedPrompt = encodeURIComponent(composedPrompt);
+        let url = `${path}?promptA=${encodedPrompt}`;
+        router.push(url);
+        return;
     }
+    // A/B Test generation
+    if (path === '/sandbox' && tool === 'ab_test') {
+        setIsGeneratingForSandbox(true);
+        const toastId = toast.loading('Generating a variation for A/B testing...');
 
-    setIsGeneratingForSandbox(true);
-    const toastId = toast.loading('Generating a variation for A/B testing...');
+        const metaPrompt = `Based on the following prompt, generate one new, distinct variation. The new variation should aim to achieve the same goal but use a different approach (e.g., be more concise, more detailed, use a different tone, or add a new constraint). Only output the new prompt text, with no extra commentary.\n\nOriginal Prompt:\n"${composedPrompt}"`;
 
-    const metaPrompt = `Based on the following prompt, generate one new, distinct variation. The new variation should aim to achieve the same goal but use a different approach (e.g., be more concise, more detailed, use a different tone, or add a new constraint). Only output the new prompt text, with no extra commentary.\n\nOriginal Prompt:\n"${composedPrompt}"`;
+        try {
+            const response = await fetch(API_EXECUTE_URL, {
+                method: 'POST',
+                headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_text: metaPrompt }),
+            });
 
-    try {
-        const response = await fetch(API_EXECUTE_URL, {
-            method: 'POST',
-            headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt_text: metaPrompt }),
-        });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.detail || 'Failed to generate variation.');
+            }
 
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data.detail || 'Failed to generate variation.');
+            const originalEncoded = encodeURIComponent(composedPrompt);
+            const variationEncoded = encodeURIComponent(data.generated_text);
+            
+            toast.success('Variation generated! Opening Sandbox...', { id: toastId });
+            router.push(`/sandbox?promptA=${originalEncoded}&promptB=${variationEncoded}`);
+
+        } catch (err: any) {
+            toast.error(`Failed to generate variation: ${err.message}`, { id: toastId });
+            console.error(err);
+        } finally {
+            setIsGeneratingForSandbox(false);
         }
-
-        const originalEncoded = encodeURIComponent(composedPrompt);
-        const variationEncoded = encodeURIComponent(data.generated_text);
-        
-        toast.success('Variation generated! Opening Sandbox...', { id: toastId });
-        router.push(`/sandbox?promptA=${originalEncoded}&promptB=${variationEncoded}`);
-
-    } catch (err: any) {
-        toast.error(`Failed to generate variation: ${err.message}`, { id: toastId });
-        console.error(err);
-    } finally {
-        setIsGeneratingForSandbox(false);
+        return;
     }
+
+    // Default navigation for other tools
+    const encodedPrompt = encodeURIComponent(composedPrompt);
+    let url = `${path}?prompt=${encodedPrompt}`;
+    if (tool) url += `&tool=${tool}`;
+    router.push(url);
   };
+
 
   const handleSaveFromQuickExecute = (promptContent: string) => {
     setIsExecuteModalOpen(false);
@@ -425,12 +448,17 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
                 <button onClick={handleOpenSaveModal} className="px-4 py-2 rounded-md text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white">Save as Prompt...</button>
               </div>
             </div>
-            <pre className="whitespace-pre-wrap text-gray-200 text-sm font-sans flex-grow overflow-y-auto">{composedPrompt}</pre>
+            {/* --- BUG FIX: Use the new AutoSizingTextarea component --- */}
+            <AutoSizingTextarea
+              className="whitespace-pre-wrap text-gray-200 text-sm font-sans flex-grow overflow-y-hidden bg-gray-900 border-0 focus:ring-0 p-0 m-0 resize-none"
+              value={composedPrompt}
+              onChange={(e) => setComposedPrompt(e.target.value)}
+            />
             <div className="mt-4 pt-4 border-t border-gray-600">
                 <h4 className="text-sm font-semibold text-gray-300 mb-2">Next Steps:</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                     <button 
-                      onClick={() => handleSendToPage('/sandbox')} 
+                      onClick={() => handleSendToPage('/sandbox', 'ab_test')} 
                       disabled={isGeneratingForSandbox}
                       className="w-full py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -438,7 +466,7 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
                     </button>
                     <button onClick={() => handleSendToPage('/analyze')} className="w-full py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm font-semibold">Analyze</button>
                     <button onClick={() => handleSendToPage('/analyze', 'optimize')} className="w-full py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 text-sm font-semibold">Optimize</button>
-                    <button onClick={() => router.push(`/clinic?prompt=${encodeURIComponent(composedPrompt)}`)} className="w-full py-2 bg-rose-600 text-white rounded hover:bg-rose-700 text-sm font-semibold">Run Clinic</button>
+                    <button onClick={() => handleSendToPage('/clinic')} className="w-full py-2 bg-rose-600 text-white rounded hover:bg-rose-700 text-sm font-semibold">Run Clinic</button>
                 </div>
             </div>
           </div>
@@ -515,7 +543,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
                 <label htmlFor="new-persona-name" className="block text-sm font-medium text-gray-300 mb-1">Persona Template Name</label>
                 <div className="flex gap-2 items-center">
                     <input id="new-persona-name" type="text" value={newPersonaName} onChange={(e) => setNewPersonaName(e.target.value)} className="flex-grow border rounded p-2 text-black bg-gray-200" required />
-                    {/* --- FIX: Call the unified handleSaveTemplate function --- */}
                     <button type="button" onClick={() => handleSaveTemplate('persona')} disabled={isSavingPersona || personaSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${personaSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
                         {isSavingPersona ? 'Saving...' : personaSaved ? 'Saved!' : 'Save'}
                     </button>
@@ -525,7 +552,6 @@ const PromptComposer = ({ templates, onPromptSaved, initialPrompt = '' }: Prompt
                 <label htmlFor="new-task-name" className="block text-sm font-medium text-gray-300 mb-1">Task Template Name</label>
                 <div className="flex gap-2 items-center">
                     <input id="new-task-name" type="text" value={newTaskName} onChange={(e) => setNewTaskName(e.target.value)} className="flex-grow border rounded p-2 text-black bg-gray-200" required />
-                    {/* --- FIX: Call the unified handleSaveTemplate function --- */}
                     <button type="button" onClick={() => handleSaveTemplate('task')} disabled={isSavingTask || taskSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${taskSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
                          {isSavingTask ? 'Saving...' : taskSaved ? 'Saved!' : 'Save'}
                     </button>
