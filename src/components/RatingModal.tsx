@@ -2,18 +2,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/context/AuthContext';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import Modal from './Modal';
 import { StarIcon } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
+import { authenticatedFetch } from '@/lib/api'; // Import the helper
 
-const API_EXECUTE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`;
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-// --- FIX: Define a strong type for the version prop for better type safety ---
 interface Version {
-  version: number;
+  version_number: number; // Corrected from 'version' to match backend/parent component
   prompt_text: string;
   commit_message: string;
 }
@@ -22,11 +19,10 @@ interface RatingModalProps {
   isOpen: boolean;
   onClose: () => void;
   promptId: string;
-  version: Version | null; // Use the new, strongly-typed Version
-  userId?: string;
+  version: Version | null;
 }
 
-const RatingModal = ({ isOpen, onClose, promptId, version, userId }: RatingModalProps) => {
+const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) => {
   const [result, setResult] = useState<{ text: string; latency: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +32,6 @@ const RatingModal = ({ isOpen, onClose, promptId, version, userId }: RatingModal
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // --- FIX: Add an effect to reset the modal's state when it opens ---
   useEffect(() => {
     if (isOpen) {
       setResult(null);
@@ -59,10 +54,14 @@ const RatingModal = ({ isOpen, onClose, promptId, version, userId }: RatingModal
 
     try {
       const startTime = performance.now();
-      const response = await fetch(API_EXECUTE_URL, {
+      // --- FIX: Use authenticatedFetch and send the complete payload ---
+      const response = await authenticatedFetch(`${API_BASE_URL}/prompts/execute`, {
         method: 'POST',
-        headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt_text: version.prompt_text }),
+        body: JSON.stringify({
+          prompt_text: version.prompt_text,
+          model: 'gemini-2.5-flash-lite',
+          variables: {},
+        }),
       });
       const endTime = performance.now();
 
@@ -70,7 +69,7 @@ const RatingModal = ({ isOpen, onClose, promptId, version, userId }: RatingModal
       if (!response.ok) throw new Error(data.detail || 'Failed to execute prompt.');
       
       setResult({
-        text: data.generated_text,
+        text: data.final_text, // Use 'final_text' for consistency
         latency: endTime - startTime,
       });
 
@@ -82,34 +81,38 @@ const RatingModal = ({ isOpen, onClose, promptId, version, userId }: RatingModal
   };
 
   const handleRatingSubmit = async (newRating: number) => {
-    if (!userId || !result || isSubmitting || !version) return;
+    if (!result || isSubmitting || !version) return;
 
     setIsSubmitting(true);
     setCurrentRating(newRating);
     
-    const newMetric = {
-      source: 'version_testing',
-      promptId: promptId,
-      promptVersion: version.version,
-      promptText: version.prompt_text,
-      generatedText: result.text,
-      model: 'default',
-      latency: result.latency,
+    // --- FIX: Refactor to use the secure /metrics/ratings endpoint ---
+    const payload = {
+      prompt_id: promptId,
+      version_number: version.version_number,
       rating: newRating,
-      createdAt: serverTimestamp(),
-      userId: userId,
     };
 
     try {
-      await addDoc(collection(db, 'prompt_metrics'), newMetric);
+      const response = await authenticatedFetch(`${API_BASE_URL}/metrics/ratings`, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to submit rating.");
+      }
+
       setShowSuccess(true);
+      toast.success("Rating saved!");
       setTimeout(() => {
         setShowSuccess(false);
       }, 2000);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Rating submission failed:", error);
-      setCurrentRating(0);
-      toast.error("Failed to save rating. Please try again.");
+      setCurrentRating(0); // Reset rating on failure
+      toast.error(error.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -118,7 +121,7 @@ const RatingModal = ({ isOpen, onClose, promptId, version, userId }: RatingModal
   if (!version) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Test & Rate Prompt Version ${version.version}`}>
+    <Modal isOpen={isOpen} onClose={onClose} title={`Test & Rate Prompt Version ${version.version_number}`}>
       <div className="space-y-4 text-white">
         <div>
           <p className="text-sm text-gray-400 mb-2">Commit: <span className="italic text-gray-300">"{version.commit_message}"</span></p>

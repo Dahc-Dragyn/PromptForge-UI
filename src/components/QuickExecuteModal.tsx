@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Modal from './Modal';
-import { authenticatedFetch } from '@/lib/api'; // FIX: Import the authenticated fetch helper
+import { authenticatedFetch } from '@/lib/api';
 import { toast } from 'react-hot-toast';
 
 const API_EXECUTE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`;
@@ -54,15 +54,15 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
     setResult(null);
     setError(null);
 
-    // FIX: Construct the complete and correct payload
+    // --- FIX: Construct the complete and correct payload ---
     const payload = {
       prompt_text: editablePrompt,
-      model: 'gemini-2.5-flash-lite', // Use the correct, cheapest model
+      model: 'gemini-2.5-flash-lite', // Use a consistent, cost-effective model
       variables: variableValues,
     };
 
     try {
-      // FIX: Use the authenticatedFetch helper
+      // --- FIX: Use the authenticatedFetch helper ---
       const response = await authenticatedFetch(API_EXECUTE_URL, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -70,11 +70,10 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
 
       const data = await response.json();
       if (!response.ok) {
-        // Use a more detailed error from the backend if available
         const errorDetail = data.detail?.[0]?.msg || data.detail || 'Failed to execute prompt.';
         throw new Error(errorDetail);
       }
-      setResult(data.final_text); // Corrected to use 'final_text' from the response model
+      setResult(data.final_text);
     } catch (err: any) {
       setError(err.message);
       toast.error(err.message);

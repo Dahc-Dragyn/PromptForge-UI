@@ -3,8 +3,8 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
+import { authenticatedFetch } from '@/lib/api'; // Import the helper
 
-// --- FIX: Renamed to 'Grok' ---
 type LlmService = 'ChatGPT' | 'Gemini' | 'Grok';
 
 interface SendToLlmProps {
@@ -15,7 +15,6 @@ interface SendToLlmProps {
 const LLM_URLS: Record<LlmService, string> = {
   ChatGPT: 'https://chat.openai.com',
   Gemini: 'https://gemini.google.com/app',
-  // --- FIX: Corrected service name and URL ---
   Grok: 'https://grok.com/', 
 };
 
@@ -26,13 +25,14 @@ const SendToLlm = ({ promptId, promptText }: SendToLlmProps) => {
     if (!promptId) throw new Error('Prompt ID is required to fetch text.');
     
     const versionsUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}/versions`;
-    const response = await fetch(versionsUrl, { headers: { 'ngrok-skip-browser-warning': 'true' } });
+    // --- FIX: Use authenticatedFetch to securely get prompt versions ---
+    const response = await authenticatedFetch(versionsUrl);
     if (!response.ok) throw new Error('Failed to fetch prompt versions.');
     
     const versions = await response.json();
-    if (versions.length > 0) {
-      const latestVersion = versions.sort((a: any, b: any) => b.version - a.version)[0];
-      return latestVersion.prompt_text;
+    if (versions && versions.length > 0) {
+      // The backend already sorts by version_number descending, so we can take the first one.
+      return versions[0].prompt_text;
     }
     throw new Error('This prompt has no versions to send.');
   };
@@ -49,8 +49,6 @@ const SendToLlm = ({ promptId, promptText }: SendToLlmProps) => {
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // --- FIX: All services now use the simple URL opening method ---
-      // This prevents errors with any of the platforms.
       const urlToSend = new URL(LLM_URLS[service]);
       const cleanUrl = `${urlToSend.origin}${urlToSend.pathname}`;
       
@@ -81,12 +79,10 @@ const SendToLlm = ({ promptId, promptText }: SendToLlmProps) => {
         {isLoading === 'Gemini' ? '...' : 'Gemini'}
       </button>
       <button 
-        // --- FIX: Corrected service name ---
         onClick={() => handleCopyAndGo('Grok')} 
         disabled={!!isLoading} 
         className="px-2.5 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-70 transition-colors w-[70px] text-center"
       >
-        {/* --- FIX: Corrected button text --- */}
         {isLoading === 'Grok' ? '...' : 'Grok'}
       </button>
     </div>
