@@ -1,39 +1,56 @@
 // src/app/benchmark/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import toast from 'react-hot-toast';
+import { authenticatedFetch } from '@/lib/api';
 
-// Define the available models, following the rule to use the cheapest Gemini model.
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
+
+// FIX: Correct the list of available models to match the backend configuration
 const AVAILABLE_MODELS = [
-  { id: 'gemini-2.0-flash-lite-001', name: 'Google Gemini 2.0 Flash' },
-  { id: 'gpt-4o', name: 'OpenAI GPT-4o' },
-  // Add other models your API supports here
+  { id: 'gemini-2.5-flash-lite', name: 'Google Gemini 2.5 Flash-Lite' },
+  { id: 'gpt-4o-mini', name: 'OpenAI GPT-4o Mini' },
 ];
 
-const BenchmarkPage = () => {
+interface BenchmarkResult {
+  model_name: string;
+  generated_text: string;
+  latency_ms: number;
+  input_token_count: number;
+  output_token_count: number;
+  cost: number;
+  error?: string;
+}
+
+function BenchmarkContent() {
   const [promptText, setPromptText] = useState('');
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<BenchmarkResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
     }
-  }, [user, authLoading, router]);
+    const promptFromUrl = searchParams.get('prompt');
+    if (promptFromUrl) {
+      setPromptText(decodeURIComponent(promptFromUrl));
+    }
+  }, [user, authLoading, router, searchParams]);
 
-  // Handler for checkbox changes
   const handleModelChange = (modelId: string) => {
     setSelectedModels(prev => 
       prev.includes(modelId)
-        ? prev.filter(id => id !== modelId) // Uncheck: remove from array
-        : [...prev, modelId] // Check: add to array
+        ? prev.filter(id => id !== modelId)
+        : [...prev, modelId]
     );
   };
 
@@ -42,18 +59,20 @@ const BenchmarkPage = () => {
     setError(null);
     setResults([]);
 
-    // Form validation
     if (selectedModels.length === 0) {
-      setError('Please select at least one model to run the benchmark.');
+      toast.error('Please select at least one model.');
       return;
+    }
+    if (!promptText.trim()) {
+        toast.error('Please enter a prompt to benchmark.');
+        return;
     }
 
     setLoading(true);
 
     try {
-      const response = await fetch('https://db4f-24-22-90-227.ngrok-free.app/api/promptforge/prompts/benchmark', {
+      const response = await authenticatedFetch(`${API_BASE_URL}/prompts/benchmark`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt_text: promptText,
           models: selectedModels,
@@ -66,84 +85,117 @@ const BenchmarkPage = () => {
         throw new Error(data.detail || `API returned status: ${response.status}`);
       }
 
-      setResults(data.results);
+      setResults(data.results as BenchmarkResult[]);
+      toast.success(`Benchmark completed for ${data.results.length} model(s).`);
     } catch (err: any) {
       console.error('API call failed:', err);
       setError(err.message || 'Failed to run benchmark. Please check the API connection.');
+      toast.error(err.message || 'Failed to run benchmark.');
     } finally {
       setLoading(false);
     }
   };
 
   if (authLoading) {
-    return <div>Loading...</div>;
+    return <div className="flex justify-center items-center h-screen">Loading...</div>;
   }
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-6">Prompt Benchmarking</h1>
-      <form onSubmit={handleSubmit} className="mb-8 p-4 border rounded-lg">
-        {/* Prompt Input Area */}
-        <div className="mb-4">
-          <label htmlFor="prompt" className="block text-sm font-medium mb-1">
-            Enter Prompt Text
-          </label>
-          <textarea
-            id="prompt"
-            value={promptText}
-            onChange={(e) => setPromptText(e.target.value)}
-            className="w-full border rounded p-2 text-black"
-            rows={10}
-            required
-          ></textarea>
-        </div>
-
-        {/* Model Selection Checkboxes */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium mb-2">
-            Select Models to Benchmark
-          </label>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {AVAILABLE_MODELS.map((model) => (
-              <label key={model.id} className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedModels.includes(model.id)}
-                  onChange={() => handleModelChange(model.id)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span>{model.name}</span>
+    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-8">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-4xl font-bold mb-4 text-center">Model Benchmark</h1>
+        <p className="text-gray-400 text-center mb-8">Test a single prompt against multiple models to compare performance, cost, and output quality.</p>
+        
+        <div className="bg-white text-black p-6 sm:p-8 rounded-lg shadow-2xl">
+          <form onSubmit={handleSubmit}>
+            <div className="mb-6">
+              <label htmlFor="prompt" className="block text-lg font-bold text-gray-800 mb-2">
+                Prompt Text
               </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={loading || !promptText || selectedModels.length === 0}
-          className="px-6 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50 transition-colors"
-        >
-          {loading ? 'Running Benchmark...' : 'Run Benchmark'}
-        </button>
-      </form>
-
-      {/* Error and Results Display */}
-      {error && <p className="mt-4 text-red-500 text-center">{error}</p>}
-
-      {results.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {results.map((result, index) => (
-            <div key={index} className="p-4 border rounded-lg bg-gray-800 shadow-md">
-              <h3 className="text-xl font-semibold text-white">{result.model_name}</h3>
-              <p className="mt-2 text-sm text-gray-400">Latency: {Math.round(result.latency_ms)}ms</p>
-              <pre className="whitespace-pre-wrap mt-4 text-gray-300 font-sans">{result.generated_text}</pre>
+              <textarea
+                id="prompt"
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                className="w-full border rounded p-3 text-black border-gray-300 font-mono text-sm"
+                rows={10}
+                required
+                placeholder="Enter the prompt you want to test here..."
+              />
             </div>
-          ))}
+
+            <div className="mb-6">
+              <label className="block text-lg font-bold text-gray-800 mb-3">
+                Select Models to Benchmark
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {AVAILABLE_MODELS.map((model) => (
+                  <label key={model.id} className="flex items-center space-x-3 p-3 rounded-lg bg-gray-100 hover:bg-gray-200 cursor-pointer transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={selectedModels.includes(model.id)}
+                      onChange={() => handleModelChange(model.id)}
+                      className="h-5 w-5 rounded border-gray-400 text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="font-medium">{model.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !promptText || selectedModels.length === 0}
+              className="w-full mt-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 font-semibold text-lg transition-all"
+            >
+              {loading ? 'Running Benchmark...' : `Run Benchmark on ${selectedModels.length} Model(s)`}
+            </button>
+          </form>
         </div>
-      )}
+
+        {error && <p className="mt-6 text-red-400 text-center font-semibold">{error}</p>}
+
+        {results.length > 0 && (
+          <div className="mt-10">
+            <h2 className="text-3xl font-bold mb-6 text-center">Benchmark Results</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {results.map((result) => (
+                <div key={result.model_name} className="bg-gray-800 rounded-lg p-5 flex flex-col border border-gray-700 shadow-lg">
+                  <h3 className="text-xl font-semibold text-white mb-3">{AVAILABLE_MODELS.find(m => m.id === result.model_name)?.name || result.model_name}</h3>
+                  
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs mb-4 bg-gray-900 p-2 rounded-md">
+                    <div>
+                      <div className="text-gray-400">Latency</div>
+                      <div className="text-cyan-400 font-bold text-base">{Math.round(result.latency_ms)}ms</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Cost</div>
+                      <div className="text-cyan-400 font-bold text-base">${result.cost.toFixed(6)}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">I/O Tokens</div>
+                      <div className="text-cyan-400 font-bold text-base">{result.input_token_count}/{result.output_token_count}</div>
+                    </div>
+                  </div>
+                  
+                  {result.error ? (
+                    <div className="bg-red-900/50 p-4 rounded-md text-red-300 text-sm flex-grow"><p className="font-bold">Error:</p><p>{result.error}</p></div>
+                  ) : (
+                    <pre className="whitespace-pre-wrap text-gray-300 text-sm font-sans bg-gray-900 p-4 rounded-md flex-grow overflow-y-auto h-80">{result.generated_text}</pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
-};
+}
 
-export default BenchmarkPage;
+const BenchmarkPageWrapper = () => (
+    <Suspense fallback={<div className="text-center p-8">Loading Benchmark...</div>}>
+        <BenchmarkContent />
+    </Suspense>
+);
+
+export default BenchmarkPageWrapper;

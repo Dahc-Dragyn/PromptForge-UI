@@ -25,10 +25,10 @@ export const usePromptMetrics = () => {
       return; // Don't fetch if user is not logged in
     }
 
-    // Query metrics created by the current user
+    // FIX: The query now uses 'owner_id' to match the updated backend schema.
     const q = query(
       collection(db, 'prompt_metrics'), 
-      where('userId', '==', user.uid),
+      where('owner_id', '==', user.uid),
       orderBy('createdAt', 'desc')
     );
 

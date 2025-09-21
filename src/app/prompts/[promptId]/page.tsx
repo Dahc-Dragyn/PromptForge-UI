@@ -1,217 +1,226 @@
+// src/app/prompts/[promptId]/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import toast from 'react-hot-toast';
-import Modal from '@/components/Modal';
-import RatingModal from '@/components/RatingModal';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import NewVersionForm from '@/components/NewVersionForm';
-import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued';
-import { BeakerIcon, DocumentMagnifyingGlassIcon, ScaleIcon } from '@heroicons/react/24/outline';
+import { EyeIcon, PencilSquareIcon, ShareIcon, ArrowDownOnSquareIcon } from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
+import { authenticatedFetch } from '@/lib/api';
 
-interface Version {
-  version: number;
-  prompt_text: string;
-  commit_message: string;
-  created_at: string;
-}
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 
-interface PromptDetails {
-  id: string;
-  name: string;
-  task_description: string;
-  created_at: string;
-}
-
-const PromptDetailPage = () => {
-  const { user } = useAuth();
-  const params = useParams();
-  const promptId = params.promptId as string;
-
-  const [prompt, setPrompt] = useState<PromptDetails | null>(null);
-  const [versions, setVersions] = useState<Version[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
-  const [versionToRate, setVersionToRate] = useState<Version | null>(null);
-  const [isNewVersionModalOpen, setIsNewVersionModalOpen] = useState(false);
-  const [copiedVersion, setCopiedVersion] = useState<number | null>(null);
-
-  const [selectedVersions, setSelectedVersions] = useState<Version[]>([]);
-
-  const fetchPromptAndVersions = async () => {
-    try {
-      const [promptRes, versionsRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}`, { headers: { 'ngrok-skip-browser-warning': 'true' } }),
-        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}/versions`, { headers: { 'ngrok-skip-browser-warning': 'true' } }),
-      ]);
-
-      if (!promptRes.ok) throw new Error('Failed to fetch prompt details.');
-      if (!versionsRes.ok) throw new Error('Failed to fetch prompt versions.');
-
-      const promptData = await promptRes.json();
-      const versionsData = await versionsRes.json();
-      
-      setPrompt(promptData);
-      setVersions(versionsData.sort((a: Version, b: Version) => b.version - a.version));
-    } catch (err: any) {
-      setError(err.message);
-      toast.error(err.message || 'An error occurred.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (promptId) {
-      setLoading(true);
-      fetchPromptAndVersions();
-    }
-  }, [promptId]);
-
-  const handleCopyText = (text: string, versionNum: number) => {
-    navigator.clipboard.writeText(text).then(() => {
-      toast.success(`Version ${versionNum} copied to clipboard!`);
-      setCopiedVersion(versionNum);
-      setTimeout(() => setCopiedVersion(null), 2000);
-    });
-  };
-
-  const handleOpenRatingModal = (version: Version) => {
-    setVersionToRate(version);
-    setIsRatingModalOpen(true);
-  };
-
-  const handleVersionSelect = (version: Version, isChecked: boolean) => {
-    let newSelection: Version[];
-  
-    if (isChecked) {
-      newSelection = [...selectedVersions, version].slice(-2);
-    } else {
-      newSelection = selectedVersions.filter(v => v.version !== version.version);
-    }
-  
-    newSelection.sort((a, b) => a.version - b.version);
-    setSelectedVersions(newSelection);
-  };
-  
-  const handleNewVersionCreated = () => {
-      setIsNewVersionModalOpen(false);
-      // Re-fetch data to show the new version without a full page reload
-      fetchPromptAndVersions(); 
-  };
-
-  if (loading) return <div className="p-8 text-center text-white">Loading prompt history...</div>;
-  if (error) return <div className="p-8 text-center text-red-400">Error: {error}</div>;
-  if (!prompt) return <div className="p-8 text-center text-white">Prompt not found.</div>;
-
-  return (
-    <>
-      <div className="p-4 sm:p-8 bg-gray-900 min-h-screen text-white">
-        <div className="max-w-7xl mx-auto">
-          <Link href="/dashboard" className="text-blue-400 hover:underline mb-6 block">&larr; Back to Dashboard</Link>
-          
-          <div className="bg-gray-800 p-6 rounded-lg mb-8 border border-gray-700">
-            <h1 className="text-3xl font-bold">{prompt.name}</h1>
-            <p className="text-gray-400 mt-2">{prompt.task_description}</p>
-            <p className="text-xs text-gray-500 mt-2">Created on: {new Date(prompt.created_at).toLocaleString()}</p>
-          </div>
-
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold">Version History</h2>
-            <button
-              onClick={() => setIsNewVersionModalOpen(true)}
-              className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-            >
-              + Create New Version
-            </button>
-          </div>
-
-          {selectedVersions.length === 2 && (
-            <div className="mb-8 bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                <div className="p-4 border-b border-gray-700">
-                    <h3 className="text-xl font-bold text-white">Comparing v{selectedVersions[0].version} and v{selectedVersions[1].version}</h3>
-                    <p className="text-sm text-gray-400">Showing additions in green and deletions in red.</p>
-                </div>
-                <ReactDiffViewer
-                  oldValue={selectedVersions[0].prompt_text}
-                  newValue={selectedVersions[1].prompt_text}
-                  splitView={true}
-                  compareMethod={DiffMethod.WORDS}
-                  leftTitle={`Version ${selectedVersions[0].version}`}
-                  rightTitle={`Version ${selectedVersions[1].version}`}
-                  useDarkTheme={true}
-                />
-            </div>
-          )}
-
-          <div className="space-y-6">
-            {versions.map((version) => (
-              <div key={version.version} className="bg-gray-800 border border-gray-700 rounded-lg p-5 transition-shadow hover:shadow-lg">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Version {version.version}</h3>
-                    <p className="text-sm text-gray-500">Saved on: {new Date(version.created_at).toLocaleString()}</p>
-                    <p className="text-gray-300 mt-2 italic">"{version.commit_message}"</p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <label htmlFor={`compare-v${version.version}`} className="text-sm text-gray-400">Compare</label>
-                    <input
-                      id={`compare-v${version.version}`}
-                      type="checkbox"
-                      checked={selectedVersions.some(v => v.version === version.version)}
-                      onChange={(e) => handleVersionSelect(version, e.target.checked)}
-                      className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-                <div className="mt-4 p-4 bg-gray-900 rounded-md">
-                  <pre className="text-gray-200 whitespace-pre-wrap text-sm font-mono">{version.prompt_text}</pre>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-gray-700 flex flex-wrap items-center gap-2">
-                  <button onClick={() => handleOpenRatingModal(version)} className="px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700">Test & Rate</button>
-                  <button onClick={() => handleCopyText(version.prompt_text, version.version)} className={`px-3 py-1 text-xs rounded transition-colors ${copiedVersion === version.version ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'}`}>
-                    {copiedVersion === version.version ? 'Copied!' : 'Copy Text'}
-                  </button>
-                  <div className="flex-grow"></div>
-                  <span className="text-xs text-gray-400 mr-2">Use this version in:</span>
-                  <Link href={`/sandbox?promptA=${encodeURIComponent(version.prompt_text)}`} className="flex items-center gap-1.5 px-3 py-1 text-xs bg-gray-600/80 text-gray-200 rounded hover:bg-gray-500/80" title="A/B Test this version">
-                    <ScaleIcon className="h-4 w-4" /> Sandbox
-                  </Link>
-                  <Link href={`/clinic?prompt=${encodeURIComponent(version.prompt_text)}`} className="flex items-center gap-1.5 px-3 py-1 text-xs bg-gray-600/80 text-gray-200 rounded hover:bg-gray-500/80" title="Send this version to the Clinic">
-                    <BeakerIcon className="h-4 w-4" /> Clinic
-                  </Link>
-                  <Link href={`/analyze?prompt=${encodeURIComponent(version.prompt_text)}`} className="flex items-center gap-1.5 px-3 py-1 text-xs bg-gray-600/80 text-gray-200 rounded hover:bg-gray-500/80" title="Analyze this version">
-                    <DocumentMagnifyingGlassIcon className="h-4 w-4" /> Analyze
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      
-      <RatingModal
-        isOpen={isRatingModalOpen}
-        onClose={() => setIsRatingModalOpen(false)}
-        promptId={promptId}
-        version={versionToRate} 
-        userId={user?.uid}
-      />
-
-      <Modal isOpen={isNewVersionModalOpen} onClose={() => setIsNewVersionModalOpen(false)} title="Create New Version">
-        {/* --- FIX: Renamed 'onSuccess' to 'onVersionCreated' to match the component's props --- */}
-        <NewVersionForm
-          promptId={promptId}
-          onVersionCreated={handleNewVersionCreated}
-        />
-      </Modal>
-    </>
-  );
+type Prompt = {
+    id: string;
+    name: string;
+    task_description: string;
+    isArchived: boolean;
 };
+
+type Version = {
+    id: string;
+    version_number: number;
+    prompt_text: string;
+    commit_message: string;
+    created_at: string;
+    ratings_summary?: {
+        average_rating: number;
+        count: number;
+    };
+};
+
+function PromptDetailContent() {
+    const { user } = useAuth();
+    const router = useRouter();
+    const params = useParams();
+    const promptId = params.promptId as string;
+
+    const [prompt, setPrompt] = useState<Prompt | null>(null);
+    const [versions, setVersions] = useState<Version[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [selectedVersion, setSelectedVersion] = useState<Version | null>(null);
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [isEditingDescription, setIsEditingDescription] = useState(false);
+    const [editedName, setEditedName] = useState('');
+    const [editedDescription, setEditedDescription] = useState('');
+
+    useEffect(() => {
+        if (!promptId || !user) return;
+
+        const fetchPromptAndVersions = async () => {
+            setLoading(true);
+            try {
+                const promptResponse = await authenticatedFetch(`${API_BASE_URL}/prompts/${promptId}`);
+                if (!promptResponse.ok) throw new Error('Prompt not found.');
+                const promptData = await promptResponse.json();
+                setPrompt({ ...promptData, id: promptId });
+                setEditedName(promptData.name);
+                setEditedDescription(promptData.task_description);
+
+                const versionsResponse = await authenticatedFetch(`${API_BASE_URL}/prompts/${promptId}/versions`);
+                if (!versionsResponse.ok) throw new Error('Could not fetch versions.');
+                const versionsData = await versionsResponse.json();
+                
+                const sortedVersions = versionsData.sort((a: Version, b: Version) => b.version_number - a.version_number);
+                setVersions(sortedVersions);
+                
+                if (sortedVersions.length > 0) {
+                    setSelectedVersion(sortedVersions[0]);
+                }
+            } catch (err: any) {
+                setError(err.message);
+                toast.error(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchPromptAndVersions();
+    }, [promptId, user]);
+    
+    const handleNameUpdate = async () => {
+        if (!prompt) return;
+        const promptRef = doc(db, 'prompts', prompt.id);
+        try {
+            await updateDoc(promptRef, { name: editedName });
+            setPrompt({ ...prompt, name: editedName });
+            setIsEditingName(false);
+            toast.success("Prompt name updated.");
+        } catch (err) {
+            toast.error("Failed to update name.");
+        }
+    };
+
+    const handleDescriptionUpdate = async () => {
+        if (!prompt) return;
+        const promptRef = doc(db, 'prompts', prompt.id);
+        try {
+            await updateDoc(promptRef, { task_description: editedDescription });
+            setPrompt({ ...prompt, task_description: editedDescription });
+            setIsEditingDescription(false);
+            toast.success("Description updated.");
+        } catch (err) {
+            toast.error("Failed to update description.");
+        }
+    };
+
+    const handleShare = () => {
+        if (!selectedVersion) {
+            toast.error("No version selected to share.");
+            return;
+        }
+        const url = `${window.location.origin}/sandbox?prompt=${encodeURIComponent(selectedVersion.prompt_text)}`;
+        navigator.clipboard.writeText(url);
+        toast.success("Sandbox URL copied to clipboard!");
+    };
+
+    const handleCompareVersions = (versionA: Version, versionB: Version) => {
+        const url = `${window.location.origin}/sandbox?promptA=${encodeURIComponent(versionA.prompt_text)}&promptB=${encodeURIComponent(versionB.prompt_text)}`;
+        router.push(url);
+    };
+
+    if (loading) return <div className="text-center p-8">Loading prompt details...</div>;
+    if (error) return <div className="text-center p-8 text-red-500">Error: {error}</div>;
+    if (!prompt) return <div className="text-center p-8">Prompt not found.</div>;
+
+    return (
+        <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 md:p-8">
+            <div className="max-w-7xl mx-auto">
+                <div className="bg-gray-800 shadow-xl rounded-lg p-6">
+                    <div className="flex flex-col md:flex-row justify-between md:items-start mb-6 border-b border-gray-700 pb-6">
+                        <div className="flex-1">
+                            {isEditingName ? (
+                                <div className="flex items-center gap-2">
+                                    <input type="text" value={editedName} onChange={(e) => setEditedName(e.target.value)} className="bg-gray-900 border border-gray-600 rounded-md text-3xl font-bold p-2 w-full" autoFocus onBlur={handleNameUpdate} onKeyDown={(e) => e.key === 'Enter' && handleNameUpdate()} />
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-3">
+                                    <h1 className="text-3xl font-bold text-white">{prompt.name}</h1>
+                                    <button onClick={() => setIsEditingName(true)} className="text-gray-400 hover:text-white"><PencilSquareIcon className="h-6 w-6" /></button>
+                                </div>
+                            )}
+
+                            {isEditingDescription ? (
+                                <textarea value={editedDescription} onChange={(e) => setEditedDescription(e.target.value)} className="bg-gray-900 border border-gray-600 rounded-md text-gray-300 mt-2 p-2 w-full" autoFocus onBlur={handleDescriptionUpdate} />
+                            ) : (
+                                <div className="flex items-center gap-3 mt-2">
+                                    <p className="text-gray-400">{prompt.task_description}</p>
+                                    <button onClick={() => setIsEditingDescription(true)} className="text-gray-400 hover:text-white"><PencilSquareIcon className="h-5 w-5" /></button>
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-4 md:mt-0 flex-shrink-0 flex gap-2">
+                            <button onClick={handleShare} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md flex items-center gap-2 transition-colors">
+                                <ShareIcon className="h-5 w-5" />
+                                Share
+                            </button>
+                            <button onClick={() => router.push(`/sandbox?prompt=${encodeURIComponent(selectedVersion?.prompt_text || '')}`)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md flex items-center gap-2 transition-colors">
+                                <ArrowDownOnSquareIcon className="h-5 w-5" />
+                                Open in Sandbox
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div className="lg:col-span-1">
+                            <h2 className="text-xl font-semibold mb-4">Versions</h2>
+                            <div className="bg-gray-900/50 rounded-lg max-h-[60vh] overflow-y-auto">
+                                <ul className="divide-y divide-gray-700">
+                                    {versions.map(version => (
+                                        <li key={version.id} onClick={() => setSelectedVersion(version)} className={`p-4 cursor-pointer hover:bg-gray-700 ${selectedVersion?.id === version.id ? 'bg-blue-900/50' : ''}`}>
+                                            <div className="flex justify-between items-center">
+                                                <p className="font-bold">Version {version.version_number}</p>
+                                                <span className="text-xs text-gray-400">{new Date(version.created_at).toLocaleDateString()}</span>
+                                            </div>
+                                            <p className="text-sm text-gray-400 mt-1 italic">"{version.commit_message}"</p>
+                                            {version.ratings_summary && version.ratings_summary.count > 0 && (
+                                                <div className="text-xs mt-2">
+                                                    Avg Rating: {version.ratings_summary.average_rating.toFixed(1)} ({version.ratings_summary.count})
+                                                </div>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div className="lg:col-span-2">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-xl font-semibold">Selected Prompt (Version {selectedVersion?.version_number})</h2>
+                            </div>
+                            {selectedVersion ? (
+                                <div className="bg-gray-900/50 rounded-lg p-4 font-mono text-sm text-gray-300 whitespace-pre-wrap min-h-[300px]">
+                                    {selectedVersion.prompt_text}
+                                </div>
+                            ) : (
+                                <div className="bg-gray-900/50 rounded-lg p-4 text-center text-gray-500 min-h-[300px] flex items-center justify-center">
+                                    <p>Select a version to view its content.</p>
+                                </div>
+                            )}
+                            <div className="mt-6">
+                                {/* --- FIX: Use correct prop name 'onVersionAdded' and typed parameter --- */}
+                                <NewVersionForm promptId={promptId} onVersionAdded={(newVersion: Version) => {
+                                    const updatedVersions = [newVersion, ...versions].sort((a,b) => b.version_number - a.version_number);
+                                    setVersions(updatedVersions);
+                                    setSelectedVersion(newVersion);
+                                }}/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+const PromptDetailPage = () => (
+    <Suspense fallback={<div className="text-center p-8">Loading...</div>}>
+        <PromptDetailContent />
+    </Suspense>
+);
 
 export default PromptDetailPage;

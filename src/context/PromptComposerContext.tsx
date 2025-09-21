@@ -4,6 +4,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { authenticatedFetch } from '@/lib/api';
 
 const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 const API_EXECUTE_URL = `${API_BASE_URL}/prompts/execute`;
@@ -112,10 +113,8 @@ export const PromptComposerProvider = ({ children, initialPromptValue = '' }: { 
         persona: personaOption.tagValue, 
         task: taskOption.tagValue 
       };
-      console.log('Sending to backend API (/templates/compose):', JSON.stringify(payload, null, 2));
-      const response = await fetch(`${API_BASE_URL}/templates/compose`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/templates/compose`, {
         method: 'POST',
-        headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const data = await response.json();
@@ -154,15 +153,34 @@ export const PromptComposerProvider = ({ children, initialPromptValue = '' }: { 
     try {
       const personaMetaPrompt = `Goal: "${recommendationGoal}". Generate a concise "persona" for an AI assistant in 2-3 sentences. Output ONLY the persona text.`;
       const taskMetaPrompt = `Goal: "${recommendationGoal}". Generate a concise "task" for an AI assistant in 2-3 sentences. Output ONLY the task text.`;
+      
+      // FIX: Add the required 'model' field with the correct value
+      const modelToUse = "gemini-2.5-flash-lite";
+      const personaPayload = { prompt_text: personaMetaPrompt, model: modelToUse, variables: {} };
+      const taskPayload = { prompt_text: taskMetaPrompt, model: modelToUse, variables: {} };
+
       const [personaRes, taskRes] = await Promise.all([
-        fetch(API_EXECUTE_URL, { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_text: personaMetaPrompt }) }),
-        fetch(API_EXECUTE_URL, { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_text: taskMetaPrompt }) }),
+        authenticatedFetch(API_EXECUTE_URL, { method: 'POST', body: JSON.stringify(personaPayload) }),
+        authenticatedFetch(API_EXECUTE_URL, { method: 'POST', body: JSON.stringify(taskPayload) }),
       ]);
-      if (!personaRes.ok || !taskRes.ok) throw new Error('AI assistant API returned an error.');
+      
+      if (!personaRes.ok || !taskRes.ok) {
+        const personaError = personaRes.ok ? null : await personaRes.json();
+        const taskError = taskRes.ok ? null : await taskRes.json();
+        console.error("AI Generation API Errors:", { personaError, taskError });
+        throw new Error('AI assistant API returned an error. Check console for details.');
+      }
+      
       const personaData = await personaRes.json();
       const taskData = await taskRes.json();
-      setAiSuggestedPersona(personaData.generated_text.trim());
-      setAiSuggestedTask(taskData.generated_text.trim());
+      
+      if (!personaData.final_text || !taskData.final_text) {
+        console.error("AI Generation Response Missing Text:", { personaData, taskData });
+        throw new Error('AI failed to generate one or more components. The response was empty.');
+      }
+
+      setAiSuggestedPersona(personaData.final_text.trim());
+      setAiSuggestedTask(taskData.final_text.trim());
       setShowSuggestionUI(true);
       toast.success('AI components generated!', { id: toastId });
     } catch (err: any) {
@@ -184,15 +202,17 @@ export const PromptComposerProvider = ({ children, initialPromptValue = '' }: { 
       const toastId = toast.loading('Generating a variation...');
       const metaPrompt = `Original Prompt:\n"${composedPrompt}"\n\nGenerate one new, distinct variation. Output ONLY the new prompt text.`;
       try {
-        const response = await fetch(API_EXECUTE_URL, {
+        // FIX: Add the required 'model' field here as well
+        const modelToUse = "gemini-2.5-flash-lite";
+        const payload = { prompt_text: metaPrompt, model: modelToUse, variables: {} };
+        const response = await authenticatedFetch(API_EXECUTE_URL, {
           method: 'POST',
-          headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt_text: metaPrompt }),
+          body: JSON.stringify(payload),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || 'Failed to generate variation.');
         const originalEncoded = encodeURIComponent(composedPrompt);
-        const variationEncoded = encodeURIComponent(data.generated_text);
+        const variationEncoded = encodeURIComponent(data.final_text);
         toast.success('Variation generated!', { id: toastId });
         router.push(`/sandbox?promptA=${originalEncoded}&promptB=${variationEncoded}`);
       } catch (err: any) {

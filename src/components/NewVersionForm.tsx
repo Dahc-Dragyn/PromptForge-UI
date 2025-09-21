@@ -3,13 +3,24 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
+import { authenticatedFetch } from '@/lib/api'; // Import the helper
+
+// Define the shape of a Version object
+type Version = {
+  id: string;
+  version_number: number;
+  prompt_text: string;
+  commit_message: string;
+  created_at: string;
+};
 
 interface NewVersionFormProps {
   promptId: string;
-  onVersionCreated: () => void;
+  // --- FIX: Renamed prop to be more descriptive and expect a Version object ---
+  onVersionAdded: (newVersion: Version) => void;
 }
 
-const NewVersionForm = ({ promptId, onVersionCreated }: NewVersionFormProps) => {
+const NewVersionForm = ({ promptId, onVersionAdded }: NewVersionFormProps) => {
   const [promptText, setPromptText] = useState('');
   const [commitMessage, setCommitMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,15 +35,12 @@ const NewVersionForm = ({ promptId, onVersionCreated }: NewVersionFormProps) => 
     const apiUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}/versions`;
 
     try {
-      const response = await fetch(apiUrl, {
+      // --- FIX: Use authenticatedFetch for the API call ---
+      const response = await authenticatedFetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'ngrok-skip-browser-warning': 'true',
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           prompt_text: promptText,
-          commit_message: commitMessage || 'No commit message.', // Provide a default
+          commit_message: commitMessage || 'Initial commit.',
         }),
       });
 
@@ -41,8 +49,10 @@ const NewVersionForm = ({ promptId, onVersionCreated }: NewVersionFormProps) => 
         throw new Error(data.detail || 'Failed to create new version.');
       }
       
-      toast.success(`Successfully created Version ${data.version}!`, { id: toastId });
-      onVersionCreated(); // Trigger the refresh on the parent page
+      toast.success(`Successfully created Version ${data.version_number}!`, { id: toastId });
+      onVersionAdded(data); // Pass the full new version object back to the parent
+      setPromptText('');   // Clear the form
+      setCommitMessage('');// Clear the form
       
     } catch (err: any) {
       setError(err.message);
@@ -53,18 +63,17 @@ const NewVersionForm = ({ promptId, onVersionCreated }: NewVersionFormProps) => 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
       {error && <p className="text-red-400 text-sm">{error}</p>}
-
+      <h3 className="text-lg font-semibold text-white">Create a New Version</h3>
       <div>
         <label htmlFor="prompt-text" className="block text-sm font-medium mb-1 text-gray-300">New Prompt Text</label>
         <textarea 
           id="prompt-text" 
           value={promptText} 
           onChange={(e) => setPromptText(e.target.value)} 
-          // --- FIX: Updated styling for dark mode ---
           className="w-full border rounded p-2 bg-gray-900 text-gray-200 border-gray-600 font-mono" 
-          rows={10} 
+          rows={8} 
           required 
         />
       </div>
@@ -76,7 +85,6 @@ const NewVersionForm = ({ promptId, onVersionCreated }: NewVersionFormProps) => 
           type="text" 
           value={commitMessage} 
           onChange={(e) => setCommitMessage(e.target.value)} 
-          // --- FIX: Updated styling for dark mode ---
           className="w-full border rounded p-2 bg-gray-900 text-gray-200 border-gray-600"
           placeholder="e.g., Added more specific constraints"
           required

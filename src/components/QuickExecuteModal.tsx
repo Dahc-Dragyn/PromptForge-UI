@@ -3,6 +3,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Modal from './Modal';
+import { authenticatedFetch } from '@/lib/api'; // FIX: Import the authenticated fetch helper
+import { toast } from 'react-hot-toast';
 
 const API_EXECUTE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`;
 
@@ -52,23 +54,30 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
     setResult(null);
     setError(null);
 
-    let finalPrompt = editablePrompt;
-    for (const key in variableValues) {
-      const regex = new RegExp(`{${key}}`, 'g');
-      finalPrompt = finalPrompt.replace(regex, variableValues[key]);
-    }
+    // FIX: Construct the complete and correct payload
+    const payload = {
+      prompt_text: editablePrompt,
+      model: 'gemini-2.5-flash-lite', // Use the correct, cheapest model
+      variables: variableValues,
+    };
 
     try {
-      const response = await fetch(API_EXECUTE_URL, {
+      // FIX: Use the authenticatedFetch helper
+      const response = await authenticatedFetch(API_EXECUTE_URL, {
         method: 'POST',
-        headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt_text: finalPrompt }),
+        body: JSON.stringify(payload),
       });
+
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Failed to execute prompt.');
-      setResult(data.generated_text);
+      if (!response.ok) {
+        // Use a more detailed error from the backend if available
+        const errorDetail = data.detail?.[0]?.msg || data.detail || 'Failed to execute prompt.';
+        throw new Error(errorDetail);
+      }
+      setResult(data.final_text); // Corrected to use 'final_text' from the response model
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -95,7 +104,7 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
             <div className="space-y-3">
               {variables.map(variable => (
                 <div key={variable}>
-                  <label htmlFor={`var-${variable}`} className="block text-sm font-medium text-gray-400 mb-1">{variable}</label>
+                  <label htmlFor={`var-${variable}`} className="block text-sm font-medium text-gray-400 mb-1">{`{${variable}}`}</label>
                   <input
                     id={`var-${variable}`}
                     type="text"
@@ -131,7 +140,6 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
         {result && (
           <div className="mt-4">
             <h4 className="font-semibold text-green-400 mb-2">Result</h4>
-            {/* --- FIX: Added text-gray-200 for visibility --- */}
             <div className="text-sm bg-gray-900 text-gray-200 p-3 rounded-md whitespace-pre-wrap max-h-48 overflow-y-auto">
               {result}
             </div>

@@ -19,11 +19,10 @@ export const usePrompts = (showArchived = false) => {
       return;
     }
 
-    // --- FINAL FIX: Simplified query. We removed the orderBy clause. ---
-    // Firestore is now only responsible for filtering by the current user.
+    // FIX: The query now uses 'owner_id' to match the updated backend schema.
     const q = query(
       collection(db, 'prompts'), 
-      where('userId', '==', user.uid)
+      where('owner_id', '==', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {

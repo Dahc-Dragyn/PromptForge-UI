@@ -9,6 +9,8 @@ import { usePrompts } from '@/hooks/usePrompts';
 import Link from 'next/link';
 import Modal from '@/components/Modal';
 import EditTemplateForm from '@/components/EditTemplateForm';
+// FIX: Import the Provider in addition to the component
+import { PromptComposerProvider } from '@/context/PromptComposerContext';
 import PromptComposer from '@/components/PromptComposer';
 import TemplateForm from '@/components/TemplateForm';
 import { usePromptMetrics } from '@/hooks/usePromptMetrics';
@@ -22,6 +24,7 @@ import { ArchiveBoxIcon, ArrowUturnLeftIcon, PlayIcon } from '@heroicons/react/2
 import SendToLlm from '@/components/SendToLlm';
 import toast from 'react-hot-toast';
 import QuickExecuteModal from '@/components/QuickExecuteModal';
+import { authenticatedFetch } from '@/lib/api';
 
 const TemplateTypeBadge = ({ tags, templateId }: { tags: string[], templateId: string }) => {
   if (tags?.includes('persona')) {
@@ -46,7 +49,6 @@ const DashboardContent = () => {
   const [currentTemplate, setCurrentTemplate] = useState<any | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   
-  // --- FIX: Use a more specific state to track which action is active ---
   const [activeAction, setActiveAction] = useState<{ type: string; id: string | null }>({ type: '', id: null });
   
   const [copiedTemplateId, setCopiedTemplateId] = useState<string | null>(null);
@@ -173,13 +175,24 @@ const DashboardContent = () => {
     setIsRatingSubmitting(true);
     try {
       const versionsUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}/versions`;
-      const response = await fetch(versionsUrl, { headers: { 'ngrok-skip-browser-warning': 'true' } });
+      const response = await authenticatedFetch(versionsUrl);
       if (!response.ok) throw new Error('Failed to fetch prompt versions.');
       const versions = await response.json();
       const latestVersion = versions.length > 0 ? versions.sort((a: any, b: any) => b.version - a.version)[0] : { version: 0, prompt_text: 'N/A' };
-      const newMetric = { source: 'dashboard_rating', promptId: promptId, promptVersion: latestVersion.version ?? 0, promptText: latestVersion.prompt_text, rating: newRating, createdAt: serverTimestamp(), userId: user.uid };
+      const newMetric = { 
+        source: 'dashboard_rating', 
+        promptId: promptId, 
+        promptVersion: latestVersion.version ?? 0, 
+        promptText: latestVersion.prompt_text, 
+        rating: newRating, 
+        createdAt: serverTimestamp(), 
+        owner_id: user.uid
+      };
       await addDoc(collection(db, 'prompt_metrics'), newMetric);
-    } catch (err) { console.error("Rating submission failed:", err); } 
+    } catch (err) { 
+        console.error("Rating submission failed:", err);
+        toast.error('Rating submission failed.');
+    } 
     finally { setIsRatingSubmitting(false); }
   };
 
@@ -187,7 +200,7 @@ const DashboardContent = () => {
     if (!user) return;
     setIsRatingSubmitting(true);
     try {
-      const q = query(collection(db, 'prompt_metrics'), where('userId', '==', user.uid), where('promptId', '==', promptId), orderBy('createdAt', 'desc'), limit(1));
+      const q = query(collection(db, 'prompt_metrics'), where('owner_id', '==', user.uid), where('promptId', '==', promptId), orderBy('createdAt', 'desc'), limit(1));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
         const docToDelete = querySnapshot.docs[0];
@@ -212,7 +225,7 @@ const DashboardContent = () => {
     setActiveAction({ type: 'copy', id: promptId });
     try {
       const versionsUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}/versions`;
-      const response = await fetch(versionsUrl, { headers: { 'ngrok-skip-browser-warning': 'true' } });
+      const response = await authenticatedFetch(versionsUrl);
       if (!response.ok) throw new Error('Failed to fetch prompt versions.');
       const versions = await response.json();
       if (versions.length > 0) {
@@ -233,7 +246,7 @@ const DashboardContent = () => {
     if (window.confirm('Are you sure you want to delete this prompt and all its versions?')) {
       setActiveAction({ type: 'delete', id: promptId });
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}`, { method: 'DELETE', headers: { 'ngrok-skip-browser-warning': 'true' }});
+        const response = await authenticatedFetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}`, { method: 'DELETE' });
         if (!response.ok) throw new Error('Failed to delete prompt.');
         toast.success('Prompt deleted.');
       } catch (err: any) { 
@@ -262,7 +275,7 @@ const DashboardContent = () => {
     setActiveAction({ type: 'execute', id: promptId });
     try {
       const versionsUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${promptId}/versions`;
-      const response = await fetch(versionsUrl, { headers: { 'ngrok-skip-browser-warning': 'true' } });
+      const response = await authenticatedFetch(versionsUrl);
       if (!response.ok) throw new Error('Failed to fetch prompt to execute.');
       const versions = await response.json();
       if (versions.length > 0) {
@@ -287,19 +300,31 @@ const DashboardContent = () => {
     setNewPromptName('');
     setNewPromptDescription('');
     setIsGeneratingDetails(true);
+    const toastId = toast.loading('Generating details with AI...');
     try {
         const nameMetaPrompt = `Based on the following prompt, generate a short, descriptive, 3-5 word title. Do not use quotes. The prompt is: "${promptContent}"`;
         const descMetaPrompt = `Based on the following prompt, generate a one-sentence description of the task it performs. The prompt is: "${promptContent}"`;
+
+        const modelToUse = "gemini-2.5-flash-lite";
+        const namePayload = { prompt_text: nameMetaPrompt, model: modelToUse, variables: {} };
+        const descPayload = { prompt_text: descMetaPrompt, model: modelToUse, variables: {} };
+
         const [nameRes, descRes] = await Promise.all([
-            fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }, body: JSON.stringify({ prompt_text: nameMetaPrompt }) }),
-            fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }, body: JSON.stringify({ prompt_text: descMetaPrompt }) })
+            authenticatedFetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`, { method: 'POST', body: JSON.stringify(namePayload) }),
+            authenticatedFetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`, { method: 'POST', body: JSON.stringify(descPayload) })
         ]);
-        if (!nameRes.ok || !descRes.ok) throw new Error('Failed to generate prompt details.');
+
+        if (!nameRes.ok || !descRes.ok) {
+          throw new Error('Failed to generate prompt details.');
+        }
+
         const nameData = await nameRes.json();
         const descData = await descRes.json();
-        setNewPromptName(nameData.generated_text.trim().replace(/"/g, ''));
-        setNewPromptDescription(descData.generated_text.trim());
+        setNewPromptName(nameData.final_text.trim().replace(/"/g, ''));
+        setNewPromptDescription(descData.final_text.trim());
+        toast.success('Details generated!', { id: toastId });
     } catch (err) {
+        toast.error('Failed to generate details.', { id: toastId });
         console.error("Failed to generate details:", err);
     } finally {
         setIsGeneratingDetails(false);
@@ -310,27 +335,35 @@ const DashboardContent = () => {
     e.preventDefault();
     if (!user) return;
     setIsSaving(true);
+    const toastId = toast.loading('Saving prompt...');
     try {
         const docRef = await addDoc(collection(db, 'prompts'), {
             name: newPromptName,
             task_description: newPromptDescription,
-            userId: user.uid,
+            owner_id: user.uid,
             isArchived: false,
             created_at: serverTimestamp(),
         });
+
         const versionsUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/${docRef.id}/versions`;
-        await fetch(versionsUrl, {
+        const response = await authenticatedFetch(versionsUrl, {
             method: 'POST',
-            headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 prompt_text: promptToSave,
                 commit_message: "Initial version from Quick Execute.",
             }),
         });
-        toast.success(`Prompt "${newPromptName}" saved successfully!`);
+
+        if (!response.ok) {
+          await deleteDoc(doc(db, 'prompts', docRef.id));
+          throw new Error('Failed to save the initial prompt version.');
+        }
+
+        toast.success(`Prompt "${newPromptName}" saved successfully!`, { id: toastId });
         setIsSaveModalOpen(false);
     } catch (err: any) {
-        toast.error(`Save failed: ${err.message}`);
+        toast.error(`Save failed: ${err.message}`, { id: toastId });
+        console.error(err);
     } finally {
         setIsSaving(false);
     }
@@ -500,11 +533,12 @@ const DashboardContent = () => {
           <div className="flex flex-col lg:col-span-2 2xl:col-span-1">
             <h2 className="text-2xl font-bold mb-4">Compose a Prompt</h2>
             <div className="flex-grow">
-              <PromptComposer 
-                templates={templates} 
-                onPromptSaved={() => {}} 
-                initialPrompt={initialPrompt} 
-              />
+              <PromptComposerProvider initialPrompt={initialPrompt}>
+                <PromptComposer 
+                  onPromptSaved={() => {}} 
+                  templates={templates} 
+                />
+              </PromptComposerProvider>
             </div>
           </div>
         </div>

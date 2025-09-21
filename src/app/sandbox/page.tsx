@@ -1,42 +1,36 @@
 // src/app/sandbox/page.tsx
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, ChangeEvent } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Modal from '@/components/Modal';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { TrashIcon, SparklesIcon } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
+import { authenticatedFetch } from '@/lib/api';
+import AutoSizingTextarea from '@/components/AutoSizingTextarea';
 
 const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 
 const AVAILABLE_MODELS = [
-    { id: 'gemini-2.0-flash-lite-001', name: 'Google Gemini Flash' },
-    { id: 'gpt-4.1-nano', name: 'OpenAI GPT-4.1 Nano' },
+    { id: 'gemini-2.5-flash-lite', name: 'Google Gemini 2.5 Flash-Lite' },
+    { id: 'gpt-4o-mini', name: 'OpenAI GPT-4o Mini' },
 ];
 
 const RESPONSE_STYLES = [
     { value: 'default', label: 'Default' },
     { value: 'concise', label: 'Concise', instruction: 'System Note: Respond as concisely as possible.' },
     { value: 'detailed', label: 'Detailed', instruction: 'System Note: Provide a detailed and thorough response.' },
-    { value: 'creative', label: 'Creative', instruction: 'System Note: Respond in an imaginative way, using analogies and storytelling elements.' },
-    { value: 'technical', label: 'Technical', instruction: 'System Note: Use precise terminology and focus on implementation details.' },
-    { value: 'conversational', label: 'Conversational', instruction: 'System Note: Use a casual, friendly tone, like talking to a peer.' },
-    { value: 'academic', label: 'Academic', instruction: 'System Note: Use a formal, evidence-based tone with systematic reasoning.' },
-    { value: 'step-by-step', label: 'Step-by-step', instruction: 'System Note: Break the response into clear, sequential instructions.' },
-    { value: 'executive', label: 'Executive', instruction: 'System Note: Be bottom-line focused, emphasizing key takeaways.' },
-    { value: 'beginner-friendly', label: 'Beginner-friendly', instruction: 'System Note: Avoid jargon and explain concepts from first principles.' },
-    { value: 'funny', label: 'Funny', instruction: 'System Note: Respond with humor and wit.' },
-    { value: 'hilarious', label: 'Hilarious', instruction: 'System Note: Respond in an over-the-top, hilarious manner.' },
 ];
 
-type TestResult = {
+type SandboxResult = {
     variationIndex: number;
     output: string;
     latency: number;
-    token_count: number;
+    input_token_count: number;
+    output_token_count: number;
     error?: string;
 };
 
@@ -50,7 +44,7 @@ function SandboxContent() {
     const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
     const [responseStyle, setResponseStyle] = useState('default');
     const [loading, setLoading] = useState(false);
-    const [results, setResults] = useState<TestResult[]>([]);
+    const [results, setResults] = useState<SandboxResult[]>([]);
 
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
     const [promptToSave, setPromptToSave] = useState('');
@@ -61,20 +55,14 @@ function SandboxContent() {
     const [isGeneratingVariation, setIsGeneratingVariation] = useState(false);
 
     useEffect(() => {
-        const promptFromVersionPage = searchParams.get('promptA');
+        const promptAFromUrl = searchParams.get('promptA');
         const promptBFromUrl = searchParams.get('promptB');
-        const promptsFromUrl = searchParams.getAll('prompt');
+        const singlePrompt = searchParams.get('prompt');
         
-        if (promptFromVersionPage) {
-            setPrompts([decodeURIComponent(promptFromVersionPage), promptBFromUrl ? decodeURIComponent(promptBFromUrl) : '']);
-        } else if (promptsFromUrl.length > 0) {
-            const decoded = promptsFromUrl.map(p => decodeURIComponent(p));
-            while (decoded.length < 2) {
-                decoded.push('');
-            }
-            setPrompts(decoded);
-        } else {
-            setPrompts(['', '']);
+        if (promptAFromUrl || promptBFromUrl) {
+            setPrompts([decodeURIComponent(promptAFromUrl || ''), decodeURIComponent(promptBFromUrl || '')]);
+        } else if (singlePrompt) {
+            setPrompts([decodeURIComponent(singlePrompt), '']);
         }
     }, [searchParams]);
 
@@ -91,7 +79,7 @@ function SandboxContent() {
     };
 
     const removePromptVariation = (index: number) => {
-        if (prompts.length > 2) {
+        if (prompts.length > 1) { 
             const newPrompts = prompts.filter((_, i) => i !== index);
             setPrompts(newPrompts);
         }
@@ -100,25 +88,44 @@ function SandboxContent() {
     const addAiVariation = async () => {
         const lastPopulatedPrompt = [...prompts].reverse().find(p => p.trim() !== '');
         if (prompts.length >= 4 || !lastPopulatedPrompt) {
-            toast.error("You need at least one prompt to generate a variation from, and you can have a maximum of 4 variations.");
+            toast.error("You need a prompt to generate a variation from, with a maximum of 4 variations.");
             return;
         }
         
         setIsGeneratingVariation(true);
         const toastId = toast.loading('Generating AI variation...');
-
         const metaPrompt = `Based on the following prompt, generate one new, distinct variation. The new variation should aim to achieve the same goal but use a different approach (e.g., be more concise, more detailed, use a different tone, or add a new constraint). Only output the new prompt text, with no extra commentary.\n\nOriginal Prompt:\n"${lastPopulatedPrompt}"`;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/prompts/execute`, {
+            const payload = {
+                prompt_text: metaPrompt,
+                model: 'gemini-2.5-flash-lite', 
+                variables: {}
+            };
+            const response = await authenticatedFetch(`${API_BASE_URL}/prompts/execute`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-                body: JSON.stringify({ prompt_text: metaPrompt }),
+                body: JSON.stringify(payload),
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.detail || 'Failed to generate variation.');
             
-            setPrompts([...prompts, data.generated_text.trim().replace(/^"|"$/g, '')]);
+            if (typeof data.final_text !== 'string') {
+                console.error("API Error: Unexpected response format.", data);
+                throw new Error("Failed to get a valid response from the AI.");
+            }
+            
+            const newVariation = data.final_text.trim().replace(/^"|"$/g, '');
+            setPrompts(currentPrompts => {
+                const newPrompts = [...currentPrompts];
+                const firstEmptyIndex = newPrompts.findIndex(p => p.trim() === '');
+                if (firstEmptyIndex !== -1) {
+                    newPrompts[firstEmptyIndex] = newVariation;
+                } else if (newPrompts.length < 4) {
+                    newPrompts.push(newVariation);
+                }
+                return newPrompts;
+            });
+            
             toast.success('AI variation added!', { id: toastId });
         } catch (error: any) {
             toast.error(`Error: ${error.message}`, { id: toastId });
@@ -131,7 +138,7 @@ function SandboxContent() {
         setLoading(true);
         setResults([]);
         
-        const activePrompts = prompts.map(p => p.trim()).filter(p => p !== '');
+        const activePrompts = prompts.map((p, i) => ({ id: `v${i}`, text: p.trim() })).filter(p => p.text !== '');
         if (activePrompts.length === 0) {
             toast.error("Please provide at least one prompt to test.");
             setLoading(false);
@@ -148,47 +155,36 @@ function SandboxContent() {
         };
 
         const payload = {
-            prompts: prompts.map((p, i) => ({ 
-                id: `v${i}`, 
-                text: getModifiedPrompt(p)
-            })).filter(p => p.text.trim() !== ''),
-            // --- FIX: Restore the 'input_text' field required by the backend ---
-            input_text: sharedInput,
             model: selectedModel,
+            prompts: activePrompts.map(p => ({ 
+                id: p.id, 
+                text: getModifiedPrompt(p.text),
+            })),
+            input_text: sharedInput
         };
 
         try {
-            const response = await fetch(`${API_BASE_URL}/sandbox/`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/sandbox/`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
                 body: JSON.stringify(payload),
             });
 
             if (!response.ok) {
                 const errorData = await response.json();
-                let errorMessage = 'An API error occurred.';
-                if (errorData.detail) {
-                    if (typeof errorData.detail === 'string') {
-                        errorMessage = errorData.detail;
-                    } else if (Array.isArray(errorData.detail) && errorData.detail[0]?.msg) {
-                        errorMessage = errorData.detail[0].msg;
-                    } else {
-                        errorMessage = JSON.stringify(errorData.detail);
-                    }
-                }
-                throw new Error(errorMessage);
+                throw new Error(errorData.detail || 'An API error occurred.');
             }
 
             const data = await response.json();
-            const formattedResults = data.results.map((res: any) => ({
+            // --- FIX: Use the correct 'generated_text' field from the API response ---
+            const formattedResults: SandboxResult[] = data.results.map((res: any) => ({
                 variationIndex: parseInt(res.prompt_id.replace('v', ''), 10),
-                output: res.generated_text,
+                output: res.generated_text, 
                 latency: Math.round(res.latency_ms),
-                token_count: res.total_tokens || 0,
+                input_token_count: res.input_token_count,
+                output_token_count: res.output_token_count,
                 error: res.error,
             }));
             setResults(formattedResults);
-
         } catch (error: any) {
             toast.error(error.message);
         } finally {
@@ -201,22 +197,34 @@ function SandboxContent() {
         setIsSaveModalOpen(true);
         setNewPromptName('');
         setNewPromptDescription('');
+        
+        if (!promptContent.trim()) return;
+
         setIsGeneratingDetails(true);
         try {
             const nameMetaPrompt = `Based on the following prompt, generate a short, descriptive, 3-5 word title. Do not use quotes. The prompt is: "${promptContent}"`;
             const descMetaPrompt = `Based on the following prompt, generate a one-sentence description of the task it performs. The prompt is: "${promptContent}"`;
+            
+            const modelToUse = 'gemini-2.5-flash-lite';
+            const namePayload = { prompt_text: nameMetaPrompt, model: modelToUse, variables: {} };
+            const descPayload = { prompt_text: descMetaPrompt, model: modelToUse, variables: {} };
 
             const [nameRes, descRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/prompts/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }, body: JSON.stringify({ prompt_text: nameMetaPrompt }) }),
-                fetch(`${API_BASE_URL}/prompts/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }, body: JSON.stringify({ prompt_text: descMetaPrompt }) })
+                authenticatedFetch(`${API_BASE_URL}/prompts/execute`, { method: 'POST', body: JSON.stringify(namePayload) }),
+                authenticatedFetch(`${API_BASE_URL}/prompts/execute`, { method: 'POST', body: JSON.stringify(descPayload) })
             ]);
 
             if (!nameRes.ok || !descRes.ok) throw new Error('Failed to generate prompt details.');
             const nameData = await nameRes.json();
             const descData = await descRes.json();
+            
+            if (typeof nameData.final_text !== 'string' || typeof descData.final_text !== 'string') {
+                console.error("API Error: Unexpected response format for details.", { nameData, descData });
+                throw new Error("Failed to get valid details from the AI.");
+            }
 
-            setNewPromptName(nameData.generated_text.trim().replace(/"/g, ''));
-            setNewPromptDescription(descData.generated_text.trim());
+            setNewPromptName(nameData.final_text.trim().replace(/"/g, ''));
+            setNewPromptDescription(descData.final_text.trim());
         } catch (err) {
             console.error("Failed to generate details:", err);
             toast.error("Could not auto-generate details. Please enter them manually.");
@@ -229,36 +237,41 @@ function SandboxContent() {
         e.preventDefault();
         if (!user) return;
         setIsSaving(true);
+        const toastId = toast.loading('Saving prompt...');
         try {
             const docRef = await addDoc(collection(db, 'prompts'), {
                 name: newPromptName,
                 task_description: newPromptDescription,
-                userId: user.uid,
+                owner_id: user.uid,
                 isArchived: false,
                 created_at: serverTimestamp(),
             });
 
             const versionsUrl = `${API_BASE_URL}/prompts/${docRef.id}/versions`;
-            await fetch(versionsUrl, {
+            const response = await authenticatedFetch(versionsUrl, {
                 method: 'POST',
-                headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt_text: promptToSave,
-                    commit_message: "Initial version from Sandbox test.",
+                    commit_message: "Initial version from Sandbox.",
                 }),
             });
             
+            if (!response.ok) {
+                await deleteDoc(doc(db, 'prompts', docRef.id));
+                throw new Error('Failed to save the initial prompt version.');
+            }
+            
             setIsSaveModalOpen(false);
             router.push('/dashboard');
-            toast.success(`Prompt "${newPromptName}" saved successfully!`);
+            toast.success(`Prompt "${newPromptName}" saved successfully!`, { id: toastId });
         } catch (err: any) {
-            toast.error(`Save failed: ${err.message}`);
+            toast.error(`Save failed: ${err.message}`, { id: toastId });
         } finally {
             setIsSaving(false);
         }
     };
     
-    if (authLoading || !user) {
+    if (authLoading) {
         return <div className="text-center p-8">Loading...</div>;
     }
 
@@ -275,15 +288,15 @@ function SandboxContent() {
                                 <div key={index} className="flex flex-col">
                                     <div className="flex justify-between items-center mb-2">
                                         <label className="block text-lg font-bold text-gray-800">Prompt Variation #{index + 1}</label>
-                                        {prompts.length > 2 && (
+                                        {prompts.length > 1 && (
                                             <button onClick={() => removePromptVariation(index)} className="p-1 text-red-500 hover:text-red-700" title="Remove Variation">
                                                 <TrashIcon className="h-5 w-5" />
                                             </button>
                                         )}
                                     </div>
-                                    <textarea
+                                    <AutoSizingTextarea
                                         value={prompt}
-                                        onChange={(e) => handlePromptChange(index, e.target.value)}
+                                        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handlePromptChange(index, e.target.value)}
                                         className="w-full border rounded p-3 text-black border-gray-300 font-mono text-sm flex-grow"
                                         rows={8}
                                         placeholder={`Enter variation #${index + 1} here...`}
@@ -333,16 +346,14 @@ function SandboxContent() {
                     {results.length > 0 && (
                         <div className="mt-10">
                             <h2 className="text-3xl font-bold mb-6 text-center">Test Results</h2>
-                            <div className={`grid grid-cols-1 ${results.length > 1 ? 'md:grid-cols-2' : ''} gap-6`}>
+                            <div className={`grid grid-cols-1 ${results.length > 1 ? `md:grid-cols-2 lg:grid-cols-${prompts.filter(p => p.trim() !== '').length}` : ''} gap-6`}>
                                 {results.sort((a, b) => a.variationIndex - b.variationIndex).map((result) => (
                                     <div key={result.variationIndex} className="bg-gray-800 rounded-lg p-5 flex flex-col border border-gray-700">
                                         <h3 className="text-xl font-semibold text-white mb-3">Result for Variation #{result.variationIndex + 1}</h3>
                                         <div className="flex items-center justify-between text-sm mb-4 bg-gray-900 px-3 py-2 rounded-md">
-                                            <div className='flex flex-wrap gap-4'>
+                                            <div className='flex flex-wrap gap-x-4 gap-y-1'>
                                                 <span className="text-gray-400 font-medium">Latency: <span className="text-cyan-400">{result.latency}ms</span></span>
-                                                {result.token_count > 0 && (
-                                                    <span className="text-gray-400 font-medium">Tokens: <span className="text-cyan-400">{result.token_count}</span></span>
-                                                )}
+                                                <span className="text-gray-400 font-medium">I/O Tokens: <span className="text-cyan-400">{result.input_token_count || 0} / {result.output_token_count || 0}</span></span>
                                             </div>
                                             <button onClick={() => { navigator.clipboard.writeText(result.output); toast.success('Output copied!'); }} className="px-3 py-1 text-xs bg-gray-600 text-gray-200 rounded hover:bg-gray-500">Copy</button>
                                         </div>

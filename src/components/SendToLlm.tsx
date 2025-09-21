@@ -4,7 +4,8 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-type LlmService = 'ChatGPT' | 'Gemini' | 'Groq';
+// --- FIX: Renamed to 'Grok' ---
+type LlmService = 'ChatGPT' | 'Gemini' | 'Grok';
 
 interface SendToLlmProps {
   promptId?: string;
@@ -13,15 +14,13 @@ interface SendToLlmProps {
 
 const LLM_URLS: Record<LlmService, string> = {
   ChatGPT: 'https://chat.openai.com',
-  Gemini: 'https://gemini.google.com',
-  Groq: 'https://grok.com/',
+  Gemini: 'https://gemini.google.com/app',
+  // --- FIX: Corrected service name and URL ---
+  Grok: 'https://grok.com/', 
 };
 
-// --- NEW: A simple helper function to create a delay ---
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 const SendToLlm = ({ promptId, promptText }: SendToLlmProps) => {
-  const [feedback, setFeedback] = useState<Record<LlmService, string> | null>(null);
+  const [isLoading, setIsLoading] = useState<LlmService | null>(null);
 
   const fetchLatestPromptText = async (): Promise<string> => {
     if (!promptId) throw new Error('Prompt ID is required to fetch text.');
@@ -39,39 +38,56 @@ const SendToLlm = ({ promptId, promptText }: SendToLlmProps) => {
   };
 
   const handleCopyAndGo = async (service: LlmService) => {
-    setFeedback({ [service]: '...' } as Record<LlmService, string>);
+    setIsLoading(service);
+    const toastId = toast.loading(`Copying prompt for ${service}...`);
+
     try {
       const textToCopy = promptText ?? await fetchLatestPromptText();
       
       await navigator.clipboard.writeText(textToCopy);
+      toast.success('Prompt copied to clipboard!', { id: toastId });
 
-      toast.success('Prompt copied to clipboard!');
+      await new Promise(resolve => setTimeout(resolve, 300));
 
-      // --- NEW: Wait for 500ms so the user can see the toast ---
-      await delay(500);
+      // --- FIX: All services now use the simple URL opening method ---
+      // This prevents errors with any of the platforms.
+      const urlToSend = new URL(LLM_URLS[service]);
+      const cleanUrl = `${urlToSend.origin}${urlToSend.pathname}`;
       
-      window.open(LLM_URLS[service], '_blank');
+      window.open(cleanUrl, '_blank');
 
-      setFeedback({ [service]: 'Copied!' } as Record<LlmService, string>);
     } catch (err: any) {
       console.error(`Failed to send to ${service}:`, err);
-      toast.error(err.message || `Failed to send to ${service}.`);
-      setFeedback({ [service]: 'Error!' } as Record<LlmService, string>);
+      toast.error(err.message || `Failed to send to ${service}.`, { id: toastId });
     } finally {
-      setTimeout(() => setFeedback(null), 2500);
+      setIsLoading(null);
     }
   };
 
   return (
     <div className="flex items-center gap-2">
-      <button onClick={() => handleCopyAndGo('ChatGPT')} disabled={!!feedback} className="px-2.5 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-70 transition-colors w-[70px] text-center">
-        {feedback?.ChatGPT || 'ChatGPT'}
+      <button 
+        onClick={() => handleCopyAndGo('ChatGPT')} 
+        disabled={!!isLoading} 
+        className="px-2.5 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-70 transition-colors w-[70px] text-center"
+      >
+        {isLoading === 'ChatGPT' ? '...' : 'ChatGPT'}
       </button>
-      <button onClick={() => handleCopyAndGo('Gemini')} disabled={!!feedback} className="px-2.5 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-70 transition-colors w-[70px] text-center">
-        {feedback?.Gemini || 'Gemini'}
+      <button 
+        onClick={() => handleCopyAndGo('Gemini')} 
+        disabled={!!isLoading} 
+        className="px-2.5 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-70 transition-colors w-[70px] text-center"
+      >
+        {isLoading === 'Gemini' ? '...' : 'Gemini'}
       </button>
-      <button onClick={() => handleCopyAndGo('Groq')} disabled={!!feedback} className="px-2.5 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-70 transition-colors w-[70px] text-center">
-        {feedback?.Groq || 'Groq'}
+      <button 
+        // --- FIX: Corrected service name ---
+        onClick={() => handleCopyAndGo('Grok')} 
+        disabled={!!isLoading} 
+        className="px-2.5 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-70 transition-colors w-[70px] text-center"
+      >
+        {/* --- FIX: Corrected button text --- */}
+        {isLoading === 'Grok' ? '...' : 'Grok'}
       </button>
     </div>
   );
