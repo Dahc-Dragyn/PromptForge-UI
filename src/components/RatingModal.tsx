@@ -5,12 +5,12 @@ import { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { StarIcon } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
-import { authenticatedFetch } from '@/lib/api'; // Import the helper
+import { authenticatedFetch } from '@/lib/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 interface Version {
-  version_number: number; // Corrected from 'version' to match backend/parent component
+  version_number: number;
   prompt_text: string;
   commit_message: string;
 }
@@ -54,7 +54,6 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
 
     try {
       const startTime = performance.now();
-      // --- FIX: Use authenticatedFetch and send the complete payload ---
       const response = await authenticatedFetch(`${API_BASE_URL}/prompts/execute`, {
         method: 'POST',
         body: JSON.stringify({
@@ -69,12 +68,13 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
       if (!response.ok) throw new Error(data.detail || 'Failed to execute prompt.');
       
       setResult({
-        text: data.final_text, // Use 'final_text' for consistency
+        text: data.final_text,
         latency: endTime - startTime,
       });
 
     } catch (err: any) {
       setError(err.message);
+      toast.error(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -86,7 +86,6 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
     setIsSubmitting(true);
     setCurrentRating(newRating);
     
-    // --- FIX: Refactor to use the secure /metrics/ratings endpoint ---
     const payload = {
       prompt_id: promptId,
       version_number: version.version_number,
@@ -108,10 +107,11 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
       toast.success("Rating saved!");
       setTimeout(() => {
         setShowSuccess(false);
-      }, 2000);
+        onClose();
+      }, 1500);
     } catch (error: any) {
       console.error("Rating submission failed:", error);
-      setCurrentRating(0); // Reset rating on failure
+      setCurrentRating(0);
       toast.error(error.message);
     } finally {
       setIsSubmitting(false);

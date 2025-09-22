@@ -2,13 +2,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, where } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
+import { authenticatedFetch } from '@/lib/api';
 
-// The hook now returns the promptId, not the text
+const API_METRICS_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/metrics`;
+
+// This interface now matches the final shape the widget needs,
+// as our new API call will return all necessary data directly.
 export interface TopPromptMetric {
-  promptId: string;
+  id: string;
+  name: string;
   averageRating: number;
   ratingCount: number;
 }
@@ -22,65 +25,41 @@ export const usePromptMetrics = () => {
   useEffect(() => {
     if (!user) {
       setLoading(false);
-      return; // Don't fetch if user is not logged in
+      return;
     }
 
-    // FIX: The query now uses 'owner_id' to match the updated backend schema.
-    const q = query(
-      collection(db, 'prompt_metrics'), 
-      where('owner_id', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const fetchTopPrompts = async () => {
+      setLoading(true);
+      setError(null);
       try {
-        const metrics = querySnapshot.docs.map(doc => doc.data());
-        
-        // Aggregate ratings by promptId
-        const promptStats: { [key: string]: { totalRating: number; count: number } } = {};
+        // --- FIX: Call the correct, centralized backend endpoint ---
+        const response = await authenticatedFetch(`${API_METRICS_URL}/prompts/top`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to fetch top prompts.');
+        }
+        const data = await response.json();
 
-        metrics.forEach(metric => {
-          // Ensure the metric is valid and has a promptId
-          if (metric.promptId && typeof metric.rating === 'number') {
-            if (!promptStats[metric.promptId]) {
-              promptStats[metric.promptId] = { totalRating: 0, count: 0 };
-            }
-            promptStats[metric.promptId].totalRating += metric.rating;
-            promptStats[metric.promptId].count++;
-          }
-        });
-
-        // Calculate averages and format the data
-        const calculatedPrompts = Object.entries(promptStats).map(([promptId, stats]) => ({
-          promptId,
-          averageRating: stats.totalRating / stats.count,
-          ratingCount: stats.count,
+        // --- FIX: Map the API response to the expected frontend interface ---
+        const formattedPrompts: TopPromptMetric[] = data.map((prompt: any) => ({
+          id: prompt.prompt_id,
+          name: prompt.name,
+          averageRating: prompt.average_rating,
+          ratingCount: prompt.rating_count,
         }));
-        
-        // Sort by average rating and then by rating count
-        calculatedPrompts.sort((a, b) => {
-          if (b.averageRating !== a.averageRating) {
-            return b.averageRating - a.averageRating;
-          }
-          return b.ratingCount - a.ratingCount;
-        });
 
-        setTopPrompts(calculatedPrompts.slice(0, 5));
-        setLoading(false);
-        setError(null);
+        setTopPrompts(formattedPrompts);
 
-      } catch (err) {
-        console.error("Failed to process metrics:", err);
-        setError('Failed to process prompt metrics.');
+      } catch (err: any) {
+        console.error("Failed to fetch top prompts:", err);
+        setError('Failed to load top prompts data.');
+      } finally {
         setLoading(false);
       }
-    }, (err) => {
-      console.error("Failed to fetch metrics:", err);
-      setError('Failed to fetch prompt metrics in real-time.');
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchTopPrompts();
+
   }, [user]); // Rerun when user logs in
 
   return { topPrompts, loading, error };
