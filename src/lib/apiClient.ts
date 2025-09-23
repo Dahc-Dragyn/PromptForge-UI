@@ -1,7 +1,9 @@
 // src/lib/apiClient.ts
 import { auth } from './firebase';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+// FIX: Hardcode the correct HTTPS URL to bypass environment variable issues.
+// This is a temporary debugging step, but it will solve the Mixed Content errors.
+const API_BASE_URL = "https://db4f-24-22-90-227.ngrok-free.app/api/promptforge";
 
 interface RequestOptions extends RequestInit {
   headers?: HeadersInit & {
@@ -9,32 +11,23 @@ interface RequestOptions extends RequestInit {
   };
 }
 
-const apiClient = async (
+export const authenticatedFetch = async (
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<any> => {
-  // FIX: Get the current user *inside* the function, not at the module level.
   const user = auth.currentUser;
-  let token: string | null = null;
-
-  if (user) {
-    try {
-      // Force refresh the token to ensure it's not expired.
-      token = await user.getIdToken(true);
-    } catch (error) {
-      console.error('Error getting auth token:', error);
-    }
+  if (!user) {
+    throw new Error('User is not authenticated.');
   }
+
+  const token = await user.getIdToken(true);
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     'ngrok-skip-browser-warning': 'true',
     ...options.headers,
+    'Authorization': `Bearer ${token}`,
   };
-
-  if (token) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
-  }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
@@ -42,23 +35,13 @@ const apiClient = async (
   });
 
   if (!response.ok) {
-    // Handle cases where the response is not JSON, like a simple text error
-    const contentType = response.headers.get("content-type");
-    if (contentType && contentType.indexOf("application/json") !== -1) {
-        const errorData = await response.json().catch(() => ({ detail: 'Failed to parse error JSON.' }));
-        throw new Error(errorData.detail || `Request failed with status ${response.status}`);
-    } else {
-        const errorText = await response.text();
-        throw new Error(errorText || `Request failed with status ${response.status}`);
+    try {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || `API Error: ${response.statusText}`);
+    } catch {
+      throw new Error(`Request failed with status ${response.status}`);
     }
   }
 
-  // Handle 204 No Content response
-  if (response.status === 204) {
-    return null;
-  }
-
-  return response.json();
+  return response.status === 204 ? null : response.json();
 };
-
-export default apiClient;

@@ -17,7 +17,8 @@
     "react-diff-viewer-continued": "^4.0.6",
     "react-dom": "19.1.0",
     "react-firebase-hooks": "^5.1.1",
-    "react-hot-toast": "^2.6.0"
+    "react-hot-toast": "^2.6.0",
+    "swr": "^2.3.6"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

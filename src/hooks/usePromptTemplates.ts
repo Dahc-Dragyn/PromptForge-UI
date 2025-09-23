@@ -1,45 +1,41 @@
 // src/hooks/usePromptTemplates.ts
 'use client';
 
-import { useState, useEffect } from 'react';
+import useSWR from 'swr';
+import { authenticatedFetch } from '@/lib/apiClient';
 import { useAuth } from '@/context/AuthContext';
-import apiClient from '@/lib/apiClient';
 
-export const usePromptTemplates = (showArchived = false) => {
-  const [templates, setTemplates] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  template_text: string;
+  is_archived: boolean;
+  created_at: string;
+  tags: string[]; // Add the missing tags property
+}
+
+const fetcher = (url: string): Promise<Template[]> => authenticatedFetch(url);
+
+export const usePromptTemplates = () => {
   const { user } = useAuth();
+  const swrKey = user ? '/templates' : null;
+  const { data, error, isLoading, mutate } = useSWR<Template[]>(swrKey, fetcher);
 
-  useEffect(() => {
-    const fetchTemplates = async () => {
-      if (!user) {
-        setLoading(false);
-        setTemplates([]);
-        return;
-      }
+  const createTemplate = async (templateData: { name: string; description: string; template_text: string; }) => {
+    const newTemplate = await authenticatedFetch('/templates', {
+      method: 'POST',
+      body: JSON.stringify(templateData),
+    });
+    mutate((currentTemplates = []) => [newTemplate, ...currentTemplates], false);
+    return newTemplate;
+  };
 
-      setLoading(true);
-      try {
-        const data = await apiClient('/templates/');
-        
-        if (data && Array.isArray(data)) {
-            let templateData = data;
-            if (!showArchived) {
-                templateData = templateData.filter((t: any) => !t.isArchived);
-            }
-            setTemplates(templateData);
-        } else {
-            setTemplates([]);
-        }
-      } catch (error) {
-        console.error('Failed to fetch prompt templates:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTemplates();
-  }, [user, showArchived]);
-
-  return { templates, loading };
+  return {
+    templates: data || [],
+    isLoading,
+    error,
+    createTemplate,
+    mutate,
+  };
 };

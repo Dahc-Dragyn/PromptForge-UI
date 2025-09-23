@@ -1,61 +1,35 @@
 // src/hooks/useRecentActivity.ts
 'use client';
 
-import { useState, useEffect } from 'react';
+import useSWR from 'swr';
+import { authenticatedFetch } from '@/lib/apiClient'; // Corrected named import
 import { useAuth } from '@/context/AuthContext';
-import apiClient from '@/lib/apiClient';
 
-export interface RecentVersion {
-  promptId: string;
-  version: number;
-  promptText: string;
-  commitMessage: string;
-  createdAt: any;
-  promptName?: string;
+// Define a type for the activity log for type safety.
+interface ActivityLog {
+  id: string;
+  timestamp: string; // Assuming ISO string format from the backend
+  activity_type: string;
+  user_name: string;
+  details: string;
 }
 
+const fetcher = (url: string): Promise<ActivityLog[]> => authenticatedFetch(url);
+
 export const useRecentActivity = () => {
-  const [recentVersions, setRecentVersions] = useState<RecentVersion[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  
+  // The SWR key is the API endpoint. It will only fetch if the user is logged in.
+  const swrKey = user ? '/metrics/activity/recent' : null;
+  
+  const { data, error, isLoading } = useSWR<ActivityLog[]>(swrKey, fetcher, {
+    // Optional: Re-fetch activity every 5 minutes
+    refreshInterval: 300000, 
+  });
 
-  useEffect(() => {
-    const fetchRecentActivity = async () => {
-      if (!user) {
-        setLoading(false);
-        setRecentVersions([]);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-      try {
-        // FIX: Corrected the API endpoint from /recent-activity to /recent-versions
-        const data = await apiClient('/metrics/recent-versions');
-        
-        if (data && Array.isArray(data)) {
-            const formattedData = data.map((item: any) => ({
-                promptId: item.prompt_id,
-                version: item.version,
-                promptText: item.prompt_text,
-                commitMessage: item.commit_message,
-                createdAt: item.created_at,
-            }));
-            setRecentVersions(formattedData);
-        } else {
-            setRecentVersions([]);
-        }
-
-      } catch (err) {
-        setError((err as Error).message || 'Failed to fetch recent activity.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRecentActivity();
-  }, [user]);
-
-  return { recentVersions, loading, error };
+  return {
+    activity: data || [],
+    isLoading,
+    error,
+  };
 };
