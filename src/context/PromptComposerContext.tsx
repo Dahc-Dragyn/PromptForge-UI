@@ -4,7 +4,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { authenticatedFetch } from '@/lib/api';
+import { authenticatedFetch } from '@/lib/apiClient';
 
 const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 const API_EXECUTE_URL = `${API_BASE_URL}/prompts/execute`;

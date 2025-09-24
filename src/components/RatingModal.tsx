@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { StarIcon } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
-import { authenticatedFetch } from '@/lib/api';
+import { authenticatedFetch } from '@/lib/apiClient';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 

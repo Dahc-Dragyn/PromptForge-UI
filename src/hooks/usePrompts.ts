@@ -2,6 +2,7 @@
 'use client';
 
 import useSWR from 'swr';
+// FIX: Change this import from '@/lib/api' to the correct '@/lib/apiClient'
 import { authenticatedFetch } from '@/lib/apiClient';
 import { useAuth } from '@/context/AuthContext';
 
@@ -10,23 +11,23 @@ interface Prompt {
   name: string;
   description: string;
   is_archived: boolean;
-  created_at: string; // Add created_at
-  latest_version_text?: string; // Add latest version text
+  created_at: string;
+  latest_version_text?: string;
 }
-
-const fetcher = (url: string): Promise<Prompt[]> => authenticatedFetch(url);
 
 export const usePrompts = () => {
   const { user } = useAuth();
   const swrKey = user ? '/prompts' : null;
-  const { data, error, isLoading, mutate } = useSWR<Prompt[]>(swrKey, fetcher);
+  const { data, error, isLoading, mutate } = useSWR<Prompt[]>(swrKey, authenticatedFetch, {
+    shouldRetryOnError: false,
+  });
 
   const createPrompt = async (promptData: { name: string; description: string; prompt_text: string; }) => {
     const newPrompt = await authenticatedFetch('/prompts', {
       method: 'POST',
       body: JSON.stringify(promptData),
     });
-    mutate((currentPrompts = []) => [newPrompt, ...currentPrompts], false);
+    mutate();
     return newPrompt;
   };
 
@@ -34,7 +35,7 @@ export const usePrompts = () => {
     await authenticatedFetch(`/prompts/${promptId}`, {
       method: 'DELETE',
     });
-    mutate((currentPrompts = []) => currentPrompts.filter(p => p.id !== promptId), false);
+    mutate();
   };
 
   return {
@@ -43,6 +44,6 @@ export const usePrompts = () => {
     error,
     createPrompt,
     deletePrompt,
-    mutate, // Ensure mutate is returned
+    mutate,
   };
 };

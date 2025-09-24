@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { authenticatedFetch } from '@/lib/api'; // Import the helper
+import { authenticatedFetch } from '@/lib/apiClient'; // Import the helper
 
 type LlmService = 'ChatGPT' | 'Gemini' | 'Grok';
 

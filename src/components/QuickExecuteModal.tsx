@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Modal from './Modal';
-import { authenticatedFetch } from '@/lib/api';
+import { authenticatedFetch } from '@/lib/apiClient';
 import { toast } from 'react-hot-toast';
 
 const API_EXECUTE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts/execute`;

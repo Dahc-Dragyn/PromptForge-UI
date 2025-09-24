@@ -10,7 +10,7 @@ import Modal from './Modal';
 import QuickExecuteModal from './QuickExecuteModal';
 import AutoSizingTextarea from './AutoSizingTextarea';
 import toast from 'react-hot-toast';
-import { authenticatedFetch } from '@/lib/api';
+import { authenticatedFetch } from '@/lib/apiClient';
 
 const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 

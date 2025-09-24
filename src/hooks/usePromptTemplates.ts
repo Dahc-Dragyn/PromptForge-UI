@@ -2,6 +2,7 @@
 'use client';
 
 import useSWR from 'swr';
+// FIX: Change this import from '@/lib/api' to the correct '@/lib/apiClient'
 import { authenticatedFetch } from '@/lib/apiClient';
 import { useAuth } from '@/context/AuthContext';
 
@@ -12,22 +13,20 @@ interface Template {
   template_text: string;
   is_archived: boolean;
   created_at: string;
-  tags: string[]; // Add the missing tags property
+  tags: string[];
 }
-
-const fetcher = (url: string): Promise<Template[]> => authenticatedFetch(url);
 
 export const usePromptTemplates = () => {
   const { user } = useAuth();
   const swrKey = user ? '/templates' : null;
-  const { data, error, isLoading, mutate } = useSWR<Template[]>(swrKey, fetcher);
+  const { data, error, isLoading, mutate } = useSWR<Template[]>(swrKey, authenticatedFetch);
 
   const createTemplate = async (templateData: { name: string; description: string; template_text: string; }) => {
     const newTemplate = await authenticatedFetch('/templates', {
       method: 'POST',
       body: JSON.stringify(templateData),
     });
-    mutate((currentTemplates = []) => [newTemplate, ...currentTemplates], false);
+    mutate();
     return newTemplate;
   };
 
