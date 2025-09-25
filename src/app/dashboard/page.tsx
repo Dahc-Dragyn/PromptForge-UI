@@ -3,15 +3,13 @@
 
 import { useState, Suspense, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { ArchiveBoxIcon, ArrowUturnLeftIcon, PlayIcon } from '@heroicons/react/24/solid';
 
 // Context and Hooks
 import { useAuth } from '@/context/AuthContext';
-import { usePrompts } from '@/hooks/usePrompts';
-import { usePromptTemplates } from '@/hooks/usePromptTemplates';
-import { usePromptMetrics } from '@/hooks/usePromptMetrics';
+import { usePrompts, usePromptMutations } from '@/hooks/usePrompts';
+import { usePromptTemplates, useTemplateMutations } from '@/hooks/usePromptTemplates';
+import { useTopPrompts } from '@/hooks/usePromptMetrics';
 import { useRecentActivity } from '@/hooks/useRecentActivity';
 import { PromptComposerProvider } from '@/context/PromptComposerContext';
 
@@ -22,93 +20,107 @@ import TemplateForm from '@/components/TemplateForm';
 import TopPromptsWidget from '@/components/TopPromptsWidget';
 import RecentActivityWidget from '@/components/RecentActivityWidget';
 import QuickExecuteModal from '@/components/QuickExecuteModal';
-import { authenticatedFetch } from '@/lib/apiClient';
+import { Prompt } from '@/types/prompt';
+import Link from 'next/link';
 
 const DashboardContent = () => {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
 
-    const [showArchived, setShowArchived] = useState(false);
     const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState(false);
-    const [isExecuteModalOpen, setIsExecuteModalOpen] = useState(false);
-    const [promptForExecution, setPromptForExecution] = useState<{ id: string, text: string } | null>(null);
+    
+    // Correctly separated data and mutation hooks
+    const { prompts, isLoading: promptsLoading, isError: promptsError } = usePrompts();
+    const { deletePrompt } = usePromptMutations();
+    
+    const { templates, isLoading: templatesLoading, isError: templatesError } = usePromptTemplates();
+    const { createTemplate } = useTemplateMutations();
 
-    const { prompts, isLoading: promptsLoading, error: promptsError, createPrompt, deletePrompt, mutate: mutatePrompts } = usePrompts();
-    const { templates, isLoading: templatesLoading, error: templatesError, createTemplate, mutate: mutateTemplates } = usePromptTemplates();
-    const { activity, isLoading: activityLoading, error: activityError } = useRecentActivity();
-    const { topPrompts, isLoading: metricsLoading, error: metricsError } = usePromptMetrics();
+    const { activities, isLoading: activityLoading, isError: activityError } = useRecentActivity();
+    const { topPrompts, isLoading: metricsLoading, isError: metricsError } = useTopPrompts();
 
-    const hydratedTopPrompts = useMemo(() => topPrompts.map(p => ({ ...p, averageRating: p.averageRating ?? 0 })), [topPrompts]);
+    // Memoized data with null-safety
     const visiblePrompts = useMemo(() => {
-        const sorted = [...prompts].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        return showArchived ? sorted : sorted.filter(p => !p.is_archived);
-    }, [prompts, showArchived]);
+        return (prompts ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }, [prompts]);
+
     const visibleTemplates = useMemo(() => {
-        const sorted = [...templates].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        return showArchived ? sorted : sorted.filter(t => !t.is_archived);
-    }, [templates, showArchived]);
+        return (templates ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }, [templates]);
 
     const handleDeletePrompt = async (promptId: string) => {
-        if (window.confirm('Are you sure?')) {
-            toast.promise(deletePrompt(promptId), { loading: 'Deleting...', success: 'Deleted!', error: 'Failed.' });
+        if (window.confirm('Are you sure you want to delete this prompt? This action cannot be undone.')) {
+            toast.promise(
+                deletePrompt(promptId),
+                {
+                    loading: 'Deleting prompt...',
+                    success: 'Prompt successfully deleted!',
+                    error: (err) => err.message || 'Failed to delete prompt.'
+                }
+            );
         }
     };
 
-    const handleCopyPrompt = async (promptId: string) => { /* implementation */ };
-    const handlePromptArchiveToggle = async (promptId: string, currentStatus: boolean) => { /* implementation */ };
-    const handleQuickExecute = (prompt: any) => { /* implementation */ };
-
     if (authLoading) return <div className="text-center p-8 text-white">Authenticating...</div>;
-    if (!user) { router.push('/login'); return null; }
+    if (!user) {
+        router.push('/login');
+        return null;
+    }
 
     return (
         <>
             <div className="p-4 sm:p-8 bg-gray-900 min-h-screen text-white">
                 <div className="flex justify-between items-center mb-6">
                     <h1 className="text-3xl font-bold">Dashboard</h1>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                        <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"/>
-                        <span className="text-sm text-gray-300">Show Archived</span>
-                    </label>
                 </div>
 
                 <div className="mb-8">
                     <h2 className="text-2xl font-bold mb-4 text-indigo-300">Prompt Hub</h2>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <TopPromptsWidget 
-                            topPrompts={hydratedTopPrompts} 
-                            loading={metricsLoading} 
-                            error={metricsError}
-                            handleCopyPrompt={handleCopyPrompt}
-                            handleDeletePrompt={handleDeletePrompt}
+                        <TopPromptsWidget
+                            topPrompts={topPrompts ?? []}
+                            loading={metricsLoading}
+                            isError={metricsError}
                         />
                         <div className="lg:col-span-2">
-                            {/* FIX: Apply 5-item limit before passing prop */}
-                            <RecentActivityWidget recentVersions={activity.slice(0, 5)} loading={activityLoading} error={activityError} handleDeletePrompt={handleDeletePrompt} />
+                            <RecentActivityWidget
+                                activities={activities ?? []}
+                                loading={activityLoading}
+                                isError={activityError}
+                            />
                         </div>
                     </div>
                 </div>
 
-                {/* Main Content Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-8">
-                    {/* FIX: Add min-h-0 to constrain flex child height */}
                     <div className="flex flex-col min-h-0">
                         <div className="flex justify-between items-center mb-4 flex-shrink-0">
                             <h2 className="text-2xl font-bold">Template Library</h2>
                             <button onClick={() => setIsCreateTemplateModalOpen(true)} className="px-3 py-1 text-sm bg-green-600 rounded hover:bg-green-700">+ New</button>
                         </div>
                         <div className="bg-gray-800 p-4 rounded-lg flex-grow overflow-y-auto">
-                            {templatesError && <p className="text-red-400">Could not load templates. Check API connection.</p>}
-                            {/* ... rest of the template list content ... */}
+                            {templatesLoading && <p>Loading templates...</p>}
+                            {templatesError && <p className="text-red-400">Could not load templates.</p>}
+                            {visibleTemplates.map(template => (
+                                <div key={template.id} className="p-2 hover:bg-gray-700 rounded">
+                                     <Link href={`/templates/${template.id}`} className="font-semibold text-blue-400">{template.name}</Link>
+                                     <p className="text-sm text-gray-400 truncate">{template.description}</p>
+                                </div>
+                            ))}
                         </div>
                     </div>
 
-                    {/* FIX: Add min-h-0 to constrain flex child height */}
                     <div className="flex flex-col min-h-0">
                         <h2 className="text-2xl font-bold mb-4 flex-shrink-0">Your Prompts</h2>
                         <div className="bg-gray-800 p-4 rounded-lg flex-grow overflow-y-auto">
-                            {promptsError && <p className="text-red-400">Could not load prompts. Check API connection.</p>}
-                             {/* ... rest of the prompt list content ... */}
+                            {promptsLoading && <p>Loading prompts...</p>}
+                            {promptsError && <p className="text-red-400">Could not load prompts.</p>}
+                            {visiblePrompts.map(prompt => (
+                                <div key={prompt.id} className="flex justify-between items-center p-2 hover:bg-gray-700 rounded">
+                                    <Link href={`/prompts/${prompt.id}`} className="font-semibold text-indigo-400">{prompt.name}</Link>
+                                    <button onClick={() => handleDeletePrompt(prompt.id)} className="text-red-500 hover:text-red-400 text-xs">Delete</button>
+                                </div>
+                            ))}
                         </div>
                     </div>
                     
@@ -116,20 +128,32 @@ const DashboardContent = () => {
                         <h2 className="text-2xl font-bold mb-4">Compose a Prompt</h2>
                         <div className="flex-grow">
                             <PromptComposerProvider>
-                                <PromptComposer onPromptSaved={() => mutatePrompts()} templates={templates} />
+                                <PromptComposer templates={templates ?? []} />
                             </PromptComposerProvider>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* ... Modals section ... */}
+            <Modal isOpen={isCreateTemplateModalOpen} onClose={() => setIsCreateTemplateModalOpen(false)} title="Create New Template">
+                <TemplateForm
+                    onSubmit={async (data) => {
+                        await toast.promise(createTemplate(data), {
+                            loading: 'Creating template...',
+                            success: 'Template created!',
+                            error: 'Failed to create template.'
+                        });
+                        setIsCreateTemplateModalOpen(false);
+                    }}
+                    onCancel={() => setIsCreateTemplateModalOpen(false)}
+                />
+            </Modal>
         </>
     );
 };
 
 const DashboardPage = () => (
-    <Suspense fallback={<div className="text-center p-8 bg-gray-900 text-white min-h-screen">Loading...</div>}>
+    <Suspense fallback={<div className="text-center p-8 bg-gray-900 text-white min-h-screen">Loading Dashboard...</div>}>
         <DashboardContent />
     </Suspense>
 );

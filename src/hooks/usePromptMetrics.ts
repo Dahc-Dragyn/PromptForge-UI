@@ -1,28 +1,23 @@
 // src/hooks/usePromptMetrics.ts
-'use client';
-
 import useSWR from 'swr';
-import { authenticatedFetch } from '@/lib/apiClient';
-import { useAuth } from '@/context/AuthContext';
+import { apiClient } from '@/lib/apiClient';
 
-// This now matches the HydratedTopPrompt shape expected by the widget
-interface PromptMetric {
+// This is the shape of the data returned by the backend API
+export interface PromptMetric {
   id: string;
   name: string;
-  averageRating: number | null; // Corrected property name
-  ratingCount: number; // Corrected property name
+  average_rating: number;
+  execution_count: number;
 }
 
-const fetcher = (url: string): Promise<PromptMetric[]> => authenticatedFetch(url);
+const fetcher = (url: string) => apiClient.get<PromptMetric[]>(url);
 
-export const usePromptMetrics = () => {
-  const { user } = useAuth();
-  const swrKey = user ? '/metrics/prompts/top' : null;
-  const { data, error, isLoading } = useSWR<PromptMetric[]>(swrKey, fetcher);
+export function useTopPrompts() {
+  const { data, error, isLoading } = useSWR('/metrics/prompts/all', fetcher);
 
   return {
-    topPrompts: data || [],
+    topPrompts: data,
     isLoading,
-    error,
+    isError: error,
   };
-};
+}

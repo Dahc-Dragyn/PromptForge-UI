@@ -2,52 +2,51 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { onIdTokenChanged, User } from 'firebase/auth'; // <--- CHANGE HERE
-import { auth } from '../lib/firebase';
+import { onAuthStateChanged, User, signOut as firebaseSignOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase'; // CORRECT: Use the path alias for a robust import
+import { useRouter } from 'next/navigation';
 
 interface AuthContextType {
   user: User | null;
-  idToken: string | null; // <--- ADD THIS
   loading: boolean;
-  isAdmin: boolean; // <--- ADD THIS
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [idToken, setIdToken] = useState<string | null>(null); // <--- ADD THIS
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false); // <--- ADD THIS
+  const router = useRouter();
 
   useEffect(() => {
-    // Use onIdTokenChanged to get the token and listen for changes
-    const unsubscribe = onIdTokenChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        const tokenResult = await currentUser.getIdTokenResult();
-        setIdToken(tokenResult.token);
-        setIsAdmin(!!tokenResult.claims.admin); // Check for admin custom claim
-      } else {
-        setIdToken(null);
-        setIsAdmin(false);
-      }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
       setLoading(false);
     });
+
     return () => unsubscribe();
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, idToken, loading, isAdmin }}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
+  const signOut = async () => {
+    try {
+      await firebaseSignOut(auth);
+      // Redirect to login page after sign out
+      router.push('/login');
+    } catch (error) {
+      console.error("Error signing out: ", error);
+    }
+  };
 
-export function useAuth() {
+  const value = { user, loading, signOut };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
+};

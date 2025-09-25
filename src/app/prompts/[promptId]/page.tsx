@@ -1,55 +1,58 @@
 // src/app/prompts/[promptId]/page.tsx
 'use client';
 
-// FIX: Import 'useEffect' from React
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { usePromptVersions } from '@/hooks/usePromptVersions';
+import toast from 'react-hot-toast';
+
+// Refactored Hooks
+import { usePromptDetail, usePromptMutations } from '@/hooks/usePrompts';
+import { usePromptVersions, useVersionMutations } from '@/hooks/usePromptVersions';
+
+// Types and Components
+import { PromptVersion } from '@/types/prompt';
 import NewVersionForm from '@/components/NewVersionForm';
 import { PencilSquareIcon, ShareIcon, ArrowDownOnSquareIcon } from '@heroicons/react/24/outline';
-import toast from 'react-hot-toast';
-import { authenticatedFetch } from '@/lib/apiClient';
 
 function PromptDetailContent() {
     const router = useRouter();
     const params = useParams();
     const promptId = params.promptId as string;
 
-    // FIX: Destructure 'mutatePrompt' instead of the generic 'mutate'
-    const { prompt, versions, isLoading, error, createVersion, mutatePrompt } = usePromptVersions(promptId);
+    // Correctly separated hook calls
+    const { prompt, isLoading: isPromptLoading, isError: isPromptError } = usePromptDetail(promptId);
+    const { versions, isLoading: areVersionsLoading, isError: areVersionsError } = usePromptVersions(promptId);
+    const { updatePrompt } = usePromptMutations();
+    const { createVersion } = useVersionMutations();
 
-    const [selectedVersion, setSelectedVersion] = useState<any | null>(null);
+    const [selectedVersion, setSelectedVersion] = useState<PromptVersion | null>(null);
     const [isEditingName, setIsEditingName] = useState(false);
     const [isEditingDescription, setIsEditingDescription] = useState(false);
-    
+
     useEffect(() => {
+        // Automatically select the latest version when data loads
         if (versions && versions.length > 0) {
-            if (!selectedVersion || !versions.find(v => v.id === selectedVersion.id)) {
-                 setSelectedVersion(versions[0]);
+            if (!selectedVersion || !versions.some(v => v.id === selectedVersion.id)) {
+                // Sort by version number descending to get the latest
+                const sortedVersions = [...versions].sort((a, b) => b.version_number - a.version_number);
+                setSelectedVersion(sortedVersions[0]);
             }
         }
     }, [versions, selectedVersion]);
 
-    const handleUpdatePrompt = async (updateData: { name?: string; description?: string }) => {
-        if (!prompt) return;
-
-        // Optimistically update the local SWR cache for a faster UI response.
-        mutatePrompt( (currentData: any) => ({ ...currentData, ...updateData }), false );
-
-        try {
-            await authenticatedFetch(`/prompts/${prompt.id}`, {
-                method: 'PATCH',
-                body: JSON.stringify(updateData),
-            });
-            toast.success("Prompt updated successfully.");
-        } catch (err) {
-            toast.error("Failed to update prompt.");
-            // Revert optimistic update on failure by passing back the original prompt data
-            mutatePrompt(prompt, false);
-        } finally {
+    const handleUpdatePrompt = async (updateData: { name?: string; task_description?: string }) => {
+        if (!promptId) return;
+        
+        const promise = updatePrompt(promptId, updateData).finally(() => {
             setIsEditingName(false);
             setIsEditingDescription(false);
-        }
+        });
+
+        toast.promise(promise, {
+            loading: 'Updating prompt...',
+            success: 'Prompt updated successfully!',
+            error: (err) => err.message || 'Failed to update prompt.'
+        });
     };
 
     const handleShare = () => {
@@ -61,9 +64,10 @@ function PromptDetailContent() {
         navigator.clipboard.writeText(url);
         toast.success("Sandbox URL copied to clipboard!");
     };
-
-    if (isLoading) return <div className="text-center p-8 text-white">Loading prompt details...</div>;
-    if (error) return <div className="text-center p-8 text-red-500">Error: {error.message}</div>;
+    
+    // Consolidated loading and error states
+    if (isPromptLoading || areVersionsLoading) return <div className="text-center p-8 text-white">Loading prompt details...</div>;
+    if (isPromptError || areVersionsError) return <div className="text-center p-8 text-red-500">Could not load prompt data.</div>;
     if (!prompt) return <div className="text-center p-8 text-white">Prompt not found.</div>;
 
     return (
@@ -90,14 +94,14 @@ function PromptDetailContent() {
 
                             {isEditingDescription ? (
                                 <textarea
-                                    defaultValue={prompt.description}
+                                    defaultValue={prompt.task_description}
                                     className="bg-gray-900 border border-gray-600 rounded-md text-gray-300 mt-2 p-2 w-full"
                                     autoFocus
-                                    onBlur={(e) => handleUpdatePrompt({ description: e.target.value })}
+                                    onBlur={(e) => handleUpdatePrompt({ task_description: e.target.value })}
                                 />
                             ) : (
                                 <div className="flex items-center gap-3 mt-2">
-                                    <p className="text-gray-400">{prompt.description}</p>
+                                    <p className="text-gray-400">{prompt.task_description}</p>
                                     <button onClick={() => setIsEditingDescription(true)} className="text-gray-400 hover:text-white"><PencilSquareIcon className="h-5 w-5" /></button>
                                 </div>
                             )}
@@ -117,13 +121,13 @@ function PromptDetailContent() {
                             <h2 className="text-xl font-semibold mb-4">Versions</h2>
                             <div className="bg-gray-900/50 rounded-lg max-h-[60vh] overflow-y-auto">
                                 <ul className="divide-y divide-gray-700">
-                                    {versions.map(version => (
+                                    {(versions ?? []).map(version => (
                                         <li key={version.id} onClick={() => setSelectedVersion(version)} className={`p-4 cursor-pointer hover:bg-gray-700 ${selectedVersion?.id === version.id ? 'bg-blue-900/50' : ''}`}>
                                             <div className="flex justify-between items-center">
                                                 <p className="font-bold">Version {version.version_number}</p>
                                                 <span className="text-xs text-gray-400">{new Date(version.created_at).toLocaleDateString()}</span>
                                             </div>
-                                            <p className="text-sm text-gray-400 mt-1 italic">"{version.commit_message}"</p>
+                                            <p className="text-sm text-gray-400 mt-1 italic">"{version.commit_message || 'Initial version'}"</p>
                                         </li>
                                     ))}
                                 </ul>
@@ -142,8 +146,7 @@ function PromptDetailContent() {
                                 </div>
                             )}
                             <div className="mt-6">
-                                {/* The 'createVersion' function is now passed directly from our hook */}
-                                <NewVersionForm promptId={promptId} onVersionAdded={createVersion} />
+                                <NewVersionForm promptId={promptId} />
                             </div>
                         </div>
                     </div>

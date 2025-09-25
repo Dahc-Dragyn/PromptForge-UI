@@ -1,35 +1,25 @@
 // src/hooks/useRecentActivity.ts
-'use client';
-
 import useSWR from 'swr';
-import { authenticatedFetch } from '@/lib/apiClient'; // Corrected named import
-import { useAuth } from '@/context/AuthContext';
+import { apiClient } from '@/lib/apiClient';
 
-// Define a type for the activity log for type safety.
-interface ActivityLog {
+// This is the shape of the data returned by the backend API
+export interface ActivityLog {
   id: string;
-  timestamp: string; // Assuming ISO string format from the backend
-  activity_type: string;
+  prompt_name: string;
+  version_number: number;
+  event_type: 'execution' | 'creation' | 'update';
+  timestamp: string; // ISO 8601 date string
   user_name: string;
-  details: string;
 }
 
-const fetcher = (url: string): Promise<ActivityLog[]> => authenticatedFetch(url);
+const fetcher = (url: string) => apiClient.get<ActivityLog[]>(url);
 
-export const useRecentActivity = () => {
-  const { user } = useAuth();
-  
-  // The SWR key is the API endpoint. It will only fetch if the user is logged in.
-  const swrKey = user ? '/metrics/activity/recent' : null;
-  
-  const { data, error, isLoading } = useSWR<ActivityLog[]>(swrKey, fetcher, {
-    // Optional: Re-fetch activity every 5 minutes
-    refreshInterval: 300000, 
-  });
+export function useRecentActivity() {
+  const { data, error, isLoading } = useSWR('/metrics/activity/recent', fetcher);
 
   return {
-    activity: data || [],
+    activities: data,
     isLoading,
-    error,
+    isError: error,
   };
-};
+}

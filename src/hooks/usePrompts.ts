@@ -1,49 +1,59 @@
 // src/hooks/usePrompts.ts
-'use client';
+import useSWR, { useSWRConfig } from 'swr';
+import { apiClient } from '@/lib/apiClient';
+import { Prompt } from '@/types/prompt';
 
-import useSWR from 'swr';
-// FIX: Change this import from '@/lib/api' to the correct '@/lib/apiClient'
-import { authenticatedFetch } from '@/lib/apiClient';
-import { useAuth } from '@/context/AuthContext';
+// --- Data Fetching Hooks ---
 
-interface Prompt {
-  id: string;
-  name: string;
-  description: string;
-  is_archived: boolean;
-  created_at: string;
-  latest_version_text?: string;
+const listFetcher = (url: string) => apiClient.get<Prompt[]>(url);
+const singleFetcher = (url: string) => apiClient.get<Prompt>(url);
+
+export function usePrompts() {
+  const { data, error, isLoading } = useSWR<Prompt[]>('/prompts/', listFetcher);
+  return { prompts: data, isLoading, isError: !!error };
 }
 
-export const usePrompts = () => {
-  const { user } = useAuth();
-  const swrKey = user ? '/prompts' : null;
-  const { data, error, isLoading, mutate } = useSWR<Prompt[]>(swrKey, authenticatedFetch, {
-    shouldRetryOnError: false,
-  });
+// NEW HOOK FOR DETAIL PAGE
+export function usePromptDetail(promptId: string | null) {
+  const key = promptId ? `/prompts/${promptId}` : null;
+  const { data, error, isLoading } = useSWR<Prompt>(key, singleFetcher);
+  return { prompt: data, isLoading, isError: !!error };
+}
 
-  const createPrompt = async (promptData: { name: string; description: string; prompt_text: string; }) => {
-    const newPrompt = await authenticatedFetch('/prompts', {
-      method: 'POST',
-      body: JSON.stringify(promptData),
+// --- Data Mutation Functions ---
+
+export function usePromptMutations() {
+  const { mutate } = useSWRConfig();
+
+  const createPrompt = async (
+    name: string,
+    task_description: string,
+    initial_prompt_text: string
+  ): Promise<Prompt> => {
+    const newPrompt = await apiClient.post<Prompt>('/prompts/', {
+      name,
+      task_description,
+      initial_prompt_text,
     });
-    mutate();
+    mutate('/prompts/');
     return newPrompt;
   };
 
-  const deletePrompt = async (promptId: string) => {
-    await authenticatedFetch(`/prompts/${promptId}`, {
-      method: 'DELETE',
-    });
-    mutate();
+  const updatePrompt = async (
+    promptId: string,
+    updateData: Partial<Pick<Prompt, 'name' | 'task_description'>>
+  ): Promise<Prompt> => {
+    const updatedPrompt = await apiClient.patch<Prompt>(`/prompts/${promptId}`, updateData);
+    // Revalidate both the list and the specific detail views
+    mutate('/prompts/');
+    mutate(`/prompts/${promptId}`);
+    return updatedPrompt;
   };
 
-  return {
-    prompts: data || [],
-    isLoading,
-    error,
-    createPrompt,
-    deletePrompt,
-    mutate,
+  const deletePrompt = async (promptId: string): Promise<void> => {
+    await apiClient.del(`/prompts/${promptId}`);
+    mutate('/prompts/');
   };
-};
+
+  return { createPrompt, updatePrompt, deletePrompt };
+}

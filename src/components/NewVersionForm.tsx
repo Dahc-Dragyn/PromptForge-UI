@@ -3,89 +3,74 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-
-// The specific shape of the version object is handled by the parent hook,
-// so we only need to define the data required for creation.
-interface NewVersionData {
-  prompt_text: string;
-  commit_message: string;
-}
+import { useVersionMutations } from '@/hooks/usePromptVersions';
+import AutoSizingTextarea from './AutoSizingTextarea';
 
 interface NewVersionFormProps {
   promptId: string;
-  // FIX: The prop now expects the 'createVersion' function from our hook.
-  onVersionAdded: (data: NewVersionData) => Promise<any>;
 }
 
-const NewVersionForm = ({ promptId, onVersionAdded }: NewVersionFormProps) => {
+const NewVersionForm = ({ promptId }: NewVersionFormProps) => {
   const [promptText, setPromptText] = useState('');
   const [commitMessage, setCommitMessage] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { createVersion } = useVersionMutations();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    if (!promptText.trim()) {
+      toast.error('Prompt text cannot be empty.');
+      return;
+    }
 
-    const versionData = {
-      prompt_text: promptText,
-      commit_message: commitMessage,
-    };
+    const promise = createVersion(promptId, promptText, commitMessage);
 
-    // FIX: The form now calls the function passed from the parent,
-    // which contains all the API logic. We wrap it in a toast promise
-    // to provide user feedback.
-    toast.promise(
-      onVersionAdded(versionData),
-      {
-        loading: 'Creating new version...',
-        success: (newVersion) => {
-          // Clear the form on success
-          setPromptText('');
-          setCommitMessage('');
-          return `Successfully created Version ${newVersion.version_number}!`;
-        },
-        error: 'Failed to create new version.',
-      }
-    ).finally(() => {
-      setIsSubmitting(false);
+    toast.promise(promise, {
+      loading: 'Creating new version...',
+      success: 'New version created!',
+      error: (err) => err.message || 'Failed to create new version.',
+    });
+
+    // Reset form on success
+    promise.then(() => {
+        setPromptText('');
+        setCommitMessage('');
     });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
-      <h3 className="text-lg font-semibold text-white">Create a New Version</h3>
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="prompt-text" className="block text-sm font-medium mb-1 text-gray-300">New Prompt Text</label>
-        <textarea
+        <label htmlFor="prompt-text" className="block text-sm font-medium text-gray-300 mb-1">
+          New Prompt Text
+        </label>
+        <AutoSizingTextarea
           id="prompt-text"
           value={promptText}
           onChange={(e) => setPromptText(e.target.value)}
-          className="w-full border rounded p-2 bg-gray-900 text-gray-200 border-gray-600 font-mono"
-          rows={8}
-          required
+          placeholder="Enter the new version of the prompt here..."
+          className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm p-2 text-white focus:ring-indigo-500 focus:border-indigo-500"
         />
       </div>
-
       <div>
-        <label htmlFor="commit-message" className="block text-sm font-medium mb-1 text-gray-300">Commit Message</label>
+        <label htmlFor="commit-message" className="block text-sm font-medium text-gray-300 mb-1">
+          Commit Message (Optional)
+        </label>
         <input
           id="commit-message"
           type="text"
           value={commitMessage}
           onChange={(e) => setCommitMessage(e.target.value)}
-          className="w-full border rounded p-2 bg-gray-900 text-gray-200 border-gray-600"
-          placeholder="e.g., Added more specific constraints"
-          required
+          placeholder="e.g., Added persona, clarified instructions"
+          className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm p-2 text-white focus:ring-indigo-500 focus:border-indigo-500"
         />
       </div>
-
-      <div className="pt-2 flex justify-end">
+      <div className="text-right">
         <button
           type="submit"
-          disabled={isSubmitting || !promptText || !commitMessage}
-          className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50 hover:bg-blue-700 transition-colors font-semibold"
+          className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+          disabled={!promptText.trim()}
         >
-          {isSubmitting ? 'Saving...' : 'Save New Version'}
+          Save New Version
         </button>
       </div>
     </form>

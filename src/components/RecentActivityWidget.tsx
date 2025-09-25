@@ -2,75 +2,56 @@
 'use client';
 
 import Link from 'next/link';
-import { ClockIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { formatDistanceToNow } from 'date-fns';
-
-interface Activity {
-  id: string;
-  promptId: string;
-  promptName: string;
-  version: number;
-  commit_message: string;
-  created_at: string;
-}
+import { ActivityLog } from '@/hooks/useRecentActivity'; // Import the correct type
 
 interface RecentActivityWidgetProps {
-  recentVersions: Activity[];
+  activities: ActivityLog[]; // Changed from recentVersions to activities
   loading: boolean;
-  error: any;
-  handleDeletePrompt: (promptId: string) => void;
+  isError: any;
 }
 
-const RecentActivityWidget = ({ recentVersions, loading, error, handleDeletePrompt }: RecentActivityWidgetProps) => {
-  if (loading) {
-    return (
-      <div className="bg-gray-800 p-4 rounded-lg shadow-lg h-full">
-        <h3 className="font-bold text-lg text-white mb-2">Recent Activity</h3>
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    );
-  }
+const RecentActivityWidget = ({ activities, loading, isError }: RecentActivityWidgetProps) => {
 
-  // FIX: Check if the error object exists and display a message instead of crashing.
-  if (error) {
-    return (
-      <div className="bg-gray-800 p-4 rounded-lg shadow-lg h-full">
-        <h3 className="font-bold text-lg text-white mb-2">Recent Activity</h3>
-        <p className="text-red-400">Error loading recent activity.</p>
-      </div>
-    );
-  }
+  const getEventStyles = (eventType: string) => {
+    switch (eventType) {
+      case 'creation':
+        return 'bg-green-500/20 text-green-300';
+      case 'update':
+        return 'bg-yellow-500/20 text-yellow-300';
+      case 'execution':
+        return 'bg-blue-500/20 text-blue-300';
+      default:
+        return 'bg-gray-500/20 text-gray-300';
+    }
+  };
+
+  if (loading) return <div className="bg-gray-800 p-4 rounded-lg">Loading Activity...</div>;
+  if (isError) return <div className="bg-gray-800 p-4 rounded-lg text-red-400">Could not load activity.</div>;
 
   return (
-    <div className="bg-gray-800 p-4 rounded-lg shadow-lg h-full">
-      <h3 className="font-bold text-lg text-white mb-4 flex items-center">
-        <ClockIcon className="h-6 w-6 mr-2 text-indigo-400" />
-        Recent Activity
-      </h3>
-      <div className="space-y-3">
-        {recentVersions.length > 0 ? recentVersions.map((version) => (
-          <div key={version.id} className="flex justify-between items-center bg-gray-700/50 p-2 rounded-md">
+    <div className="bg-gray-800 p-4 rounded-lg">
+      <h3 className="text-xl font-bold mb-4">Recent Activity</h3>
+      <ul className="space-y-3">
+        {(activities || []).map((activity) => (
+          <li key={activity.id} className="flex justify-between items-center text-sm p-2 rounded-md hover:bg-gray-700/50">
             <div>
-              <Link href={`/prompts/${version.promptId}`} className="text-white hover:text-indigo-30 Hercai font-semibold">
-                {version.promptName}
+              <Link href={`/prompts/${activity.prompt_name}`} className="font-semibold text-indigo-400 hover:underline">
+                {activity.prompt_name}
               </Link>
-              <p className="text-sm text-gray-400">
-                v{version.version} - {version.commit_message}
-              </p>
+              <span className="text-gray-400 ml-2">v{activity.version_number}</span>
+              <p className="text-xs text-gray-500">by {activity.user_name}</p>
+            </div>
+            <div className="text-right">
+              <span className={`px-2 py-1 text-xs font-medium rounded-full ${getEventStyles(activity.event_type)}`}>
+                {activity.event_type}
+              </span>
               <p className="text-xs text-gray-500 mt-1">
-                {formatDistanceToNow(new Date(version.created_at), { addSuffix: true })}
+                {new Date(activity.timestamp).toLocaleString()}
               </p>
             </div>
-            <button 
-              onClick={() => handleDeletePrompt(version.promptId)} 
-              title="Delete Prompt"
-              className="text-gray-400 hover:text-red-500 transition-colors"
-            >
-              <TrashIcon className="h-5 w-5" />
-            </button>
-          </div>
-        )) : <p className="text-gray-400">No recent activity to display.</p>}
-      </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 };

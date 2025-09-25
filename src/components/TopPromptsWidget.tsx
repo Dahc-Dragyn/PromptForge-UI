@@ -2,67 +2,56 @@
 'use client';
 
 import Link from 'next/link';
-import { ChartBarIcon, DocumentDuplicateIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { useMemo } from 'react';
+import { PromptMetric } from '@/hooks/usePromptMetrics'; // Import the API data type
 
-export interface HydratedTopPrompt {
+// This is the shape the component's UI expects
+interface HydratedTopPrompt {
   id: string;
   name: string;
   averageRating: number;
-  ratingCount: number;
+  executionCount: number;
+  // This property is not provided by the API, so we make it optional or default it.
+  ratingCount?: number; 
 }
 
 interface TopPromptsWidgetProps {
-  topPrompts: HydratedTopPrompt[];
+  topPrompts: PromptMetric[]; // Accept the API data shape directly
   loading: boolean;
-  error: any; // Keep `any` to accept the SWR error object
-  handleCopyPrompt: (promptId: string) => void;
-  handleDeletePrompt: (promptId: string) => void;
+  isError: any;
 }
 
-const TopPromptsWidget = ({ topPrompts, loading, error, handleCopyPrompt, handleDeletePrompt }: TopPromptsWidgetProps) => {
-  if (loading) {
-    return (
-      <div className="bg-gray-800 p-4 rounded-lg shadow-lg">
-        <h3 className="font-bold text-lg text-white mb-2">Top Prompts</h3>
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    );
-  }
+const TopPromptsWidget = ({ topPrompts, loading, isError }: TopPromptsWidgetProps) => {
+  // Use useMemo to transform the props safely
+  const hydratedPrompts: HydratedTopPrompt[] = useMemo(() => {
+    return (topPrompts || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      averageRating: p.average_rating,
+      executionCount: p.execution_count,
+      ratingCount: 0, // Defaulting ratingCount as it's not in the API response
+    }));
+  }, [topPrompts]);
 
-  // FIX: Check if the error object exists and display a message. Do not render the object itself.
-  if (error) {
-    return (
-      <div className="bg-gray-800 p-4 rounded-lg shadow-lg">
-        <h3 className="font-bold text-lg text-white mb-2">Top Prompts</h3>
-        <p className="text-red-400">Error loading top prompts. Please check the API connection.</p>
-        <p className="text-xs text-gray-500 mt-2">Details: {error.message}</p>
-      </div>
-    );
-  }
+  if (loading) return <div className="bg-gray-800 p-4 rounded-lg">Loading Top Prompts...</div>;
+  if (isError) return <div className="bg-gray-800 p-4 rounded-lg text-red-400">Could not load prompts.</div>;
 
   return (
-    <div className="bg-gray-800 p-4 rounded-lg shadow-lg">
-      <h3 className="font-bold text-lg text-white mb-4 flex items-center">
-        <ChartBarIcon className="h-6 w-6 mr-2 text-indigo-400" />
-        Top Prompts
-      </h3>
-      <div className="space-y-3">
-        {topPrompts.length > 0 ? topPrompts.slice(0, 5).map((prompt, index) => (
-          <div key={prompt.id} className="flex justify-between items-center bg-gray-700/50 p-2 rounded-md">
-            <div className="flex items-center">
-              <span className="text-indigo-400 font-bold mr-3 text-lg">#{index + 1}</span>
-              <Link href={`/prompts/${prompt.id}`} className="text-white hover:text-indigo-300 transition-colors">
-                {prompt.name}
-              </Link>
+    <div className="bg-gray-800 p-4 rounded-lg">
+      <h3 className="text-xl font-bold mb-4">Top Prompts</h3>
+      <ul className="space-y-3">
+        {hydratedPrompts.map((prompt) => (
+          <li key={prompt.id} className="text-sm">
+            <Link href={`/prompts/${prompt.id}`} className="font-semibold text-indigo-400 hover:underline">
+              {prompt.name}
+            </Link>
+            <div className="text-xs text-gray-400 flex justify-between">
+              <span>Executions: {prompt.executionCount}</span>
+              <span>Avg. Rating: {prompt.averageRating.toFixed(2)}</span>
             </div>
-            <div className="flex items-center space-x-2">
-                <span className="text-xs text-gray-400">({prompt.averageRating.toFixed(1)} stars, {prompt.ratingCount} ratings)</span>
-                <button onClick={() => handleCopyPrompt(prompt.id)} title="Copy" className="text-gray-400 hover:text-white transition-colors"><DocumentDuplicateIcon className="h-5 w-5" /></button>
-                <button onClick={() => handleDeletePrompt(prompt.id)} title="Delete" className="text-gray-400 hover:text-red-500 transition-colors"><TrashIcon className="h-5 w-5" /></button>
-            </div>
-          </div>
-        )) : <p className="text-gray-400">No prompt metrics available yet.</p>}
-      </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 };

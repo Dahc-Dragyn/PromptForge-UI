@@ -1,40 +1,53 @@
 // src/hooks/usePromptTemplates.ts
-'use client';
+import useSWR, { useSWRConfig } from 'swr';
+import { apiClient } from '@/lib/apiClient';
+import { PromptTemplate } from '@/types/template';
 
-import useSWR from 'swr';
-// FIX: Change this import from '@/lib/api' to the correct '@/lib/apiClient'
-import { authenticatedFetch } from '@/lib/apiClient';
-import { useAuth } from '@/context/AuthContext';
+// --- Data Fetching Hook ---
 
-interface Template {
-  id: string;
-  name: string;
-  description: string;
-  template_text: string;
-  is_archived: boolean;
-  created_at: string;
-  tags: string[];
+const fetcher = (url: string) => apiClient.get<PromptTemplate[]>(url);
+
+export function usePromptTemplates() {
+  const { data, error, isLoading } = useSWR<PromptTemplate[]>('/templates/', fetcher);
+
+  return {
+    templates: data,
+    isLoading,
+    isError: error,
+  };
 }
 
-export const usePromptTemplates = () => {
-  const { user } = useAuth();
-  const swrKey = user ? '/templates' : null;
-  const { data, error, isLoading, mutate } = useSWR<Template[]>(swrKey, authenticatedFetch);
+// --- Data Mutation Functions ---
 
-  const createTemplate = async (templateData: { name: string; description: string; template_text: string; }) => {
-    const newTemplate = await authenticatedFetch('/templates', {
-      method: 'POST',
-      body: JSON.stringify(templateData),
-    });
-    mutate();
+export function useTemplateMutations() {
+  const { mutate } = useSWRConfig();
+  const endpoint = '/templates/';
+
+  const createTemplate = async (
+    templateData: Omit<PromptTemplate, 'id' | 'created_at' | 'updated_at'>
+  ): Promise<PromptTemplate> => {
+    const newTemplate = await apiClient.post<PromptTemplate>(endpoint, templateData);
+    mutate(endpoint); // Revalidate the list of templates
     return newTemplate;
   };
 
-  return {
-    templates: data || [],
-    isLoading,
-    error,
-    createTemplate,
-    mutate,
+  const updateTemplate = async (
+    templateId: string,
+    updateData: Partial<PromptTemplate>
+  ): Promise<PromptTemplate> => {
+    const updatedTemplate = await apiClient.patch<PromptTemplate>(`${endpoint}${templateId}`, updateData);
+    mutate(endpoint);
+    return updatedTemplate;
   };
-};
+  
+  const deleteTemplate = async (templateId: string): Promise<void> => {
+    await apiClient.del(`${endpoint}${templateId}`);
+    mutate(endpoint);
+  };
+
+  return {
+    createTemplate,
+    updateTemplate,
+    deleteTemplate,
+  };
+}

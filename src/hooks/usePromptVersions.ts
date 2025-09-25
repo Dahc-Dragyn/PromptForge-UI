@@ -1,67 +1,45 @@
 // src/hooks/usePromptVersions.ts
-'use client';
+import useSWR, { useSWRConfig } from 'swr';
+import { apiClient } from '@/lib/apiClient';
+import { PromptVersion } from '@/types/prompt';
 
-import useSWR from 'swr';
-import { authenticatedFetch } from '@/lib/apiClient';
+// --- Data Fetching Hook ---
 
-interface PromptVersion {
-  id: string;
-  version_number: number;
-  prompt_text: string;
-  commit_message: string;
-  created_at: string;
+const fetcher = (url: string) => apiClient.get<PromptVersion[]>(url);
+
+export function usePromptVersions(promptId: string | null) {
+  // Only fetch if promptId is not null
+  const key = promptId ? `/prompts/${promptId}/versions` : null;
+  const { data, error, isLoading } = useSWR<PromptVersion[]>(key, fetcher);
+
+  return {
+    versions: data,
+    isLoading,
+    isError: error,
+  };
 }
 
-interface PromptDetails {
-    id: string;
-    name: string;
-    description: string;
-}
+// --- Data Mutation Function ---
 
-const fetcher = (url: string) => authenticatedFetch(url);
+export function useVersionMutations() {
+  const { mutate } = useSWRConfig();
 
-export const usePromptVersions = (promptId: string | null) => {
-  // Fetch prompt details, renaming 'mutate' to be specific
-  const { 
-    data: prompt, 
-    error: promptError, 
-    isLoading: isPromptLoading, 
-    mutate: mutatePrompt 
-  } = useSWR<PromptDetails>(
-    promptId ? `/prompts/${promptId}` : null,
-    fetcher
-  );
-
-  // Fetch prompt versions, renaming 'mutate' to be specific
-  const { 
-    data: versions, 
-    error: versionsError, 
-    isLoading: areVersionsLoading, 
-    mutate: mutateVersions 
-  } = useSWR<PromptVersion[]>(
-    promptId ? `/prompts/${promptId}/versions` : null,
-    fetcher
-  );
-
-  const createVersion = async (versionData: { prompt_text: string; commit_message: string; }) => {
-    if (!promptId) throw new Error("Prompt ID is not available.");
-
-    const newVersion = await authenticatedFetch(`/prompts/${promptId}/versions`, {
-        method: 'POST',
-        body: JSON.stringify(versionData),
+  const createVersion = async (
+    promptId: string,
+    prompt_text: string,
+    commit_message?: string
+  ): Promise<PromptVersion> => {
+    const newVersion = await apiClient.post<PromptVersion>(`/prompts/${promptId}/versions`, {
+      prompt_text,
+      commit_message,
     });
-
-    // Revalidate just the versions list to show the new version
-    mutateVersions();
+    
+    // Trigger revalidation of the versions list for this specific prompt
+    mutate(`/prompts/${promptId}/versions`);
     return newVersion;
   };
 
   return {
-    prompt,
-    versions: versions ? [...versions].sort((a, b) => b.version_number - a.version_number) : [],
-    isLoading: isPromptLoading || areVersionsLoading,
-    error: promptError || versionsError,
     createVersion,
-    mutatePrompt, // FIX: Expose the mutate function for the prompt details
   };
-};
+}
