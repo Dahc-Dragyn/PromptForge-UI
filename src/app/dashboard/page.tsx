@@ -7,7 +7,8 @@ import toast from 'react-hot-toast';
 
 // Context and Hooks
 import { useAuth } from '@/context/AuthContext';
-import { usePrompts, usePromptMutations } from '@/hooks/usePrompts';
+// FIXED: Removed usePromptMutations from import
+import { usePrompts } from '@/hooks/usePrompts';
 import { usePromptTemplates, useTemplateMutations } from '@/hooks/usePromptTemplates';
 import { useTopPrompts } from '@/hooks/usePromptMetrics';
 import { useRecentActivity } from '@/hooks/useRecentActivity';
@@ -29,9 +30,8 @@ const DashboardContent = () => {
 
     const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState(false);
     
-    // Correctly separated data and mutation hooks
-    const { prompts, isLoading: promptsLoading, isError: promptsError } = usePrompts();
-    const { deletePrompt } = usePromptMutations();
+    // FIXED: Destructured deletePrompt directly from the usePrompts hook
+    const { prompts, isLoading: promptsLoading, isError: promptsError, deletePrompt } = usePrompts();
     
     const { templates, isLoading: templatesLoading, isError: templatesError } = usePromptTemplates();
     const { createTemplate } = useTemplateMutations();
@@ -103,8 +103,8 @@ const DashboardContent = () => {
                             {templatesError && <p className="text-red-400">Could not load templates.</p>}
                             {visibleTemplates.map(template => (
                                 <div key={template.id} className="p-2 hover:bg-gray-700 rounded">
-                                     <Link href={`/templates/${template.id}`} className="font-semibold text-blue-400">{template.name}</Link>
-                                     <p className="text-sm text-gray-400 truncate">{template.description}</p>
+                                      <Link href={`/templates/${template.id}`} className="font-semibold text-blue-400">{template.name}</Link>
+                                      <p className="text-sm text-gray-400 truncate">{template.description}</p>
                                 </div>
                             ))}
                         </div>

@@ -1,59 +1,49 @@
 // src/hooks/usePrompts.ts
-import useSWR, { useSWRConfig } from 'swr';
+import useSWR from 'swr';
 import { apiClient } from '@/lib/apiClient';
 import { Prompt } from '@/types/prompt';
-
-// --- Data Fetching Hooks ---
 
 const listFetcher = (url: string) => apiClient.get<Prompt[]>(url);
 const singleFetcher = (url: string) => apiClient.get<Prompt>(url);
 
 export function usePrompts() {
-  const { data, error, isLoading } = useSWR<Prompt[]>('/prompts/', listFetcher);
-  return { prompts: data, isLoading, isError: !!error };
-}
+  // CORRECTED: The path is now just '/prompts'. The proxy handles the rest.
+  const { data, error, isLoading, mutate } = useSWR('/prompts', listFetcher);
 
-// NEW HOOK FOR DETAIL PAGE
-export function usePromptDetail(promptId: string | null) {
-  const key = promptId ? `/prompts/${promptId}` : null;
-  const { data, error, isLoading } = useSWR<Prompt>(key, singleFetcher);
-  return { prompt: data, isLoading, isError: !!error };
-}
-
-// --- Data Mutation Functions ---
-
-export function usePromptMutations() {
-  const { mutate } = useSWRConfig();
-
-  const createPrompt = async (
-    name: string,
-    task_description: string,
-    initial_prompt_text: string
-  ): Promise<Prompt> => {
-    const newPrompt = await apiClient.post<Prompt>('/prompts/', {
-      name,
-      task_description,
-      initial_prompt_text,
-    });
-    mutate('/prompts/');
+  const createPrompt = async (promptData: Partial<Prompt>) => {
+    // CORRECTED: The path is now just '/prompts'.
+    const newPrompt = await apiClient.post<Prompt>('/prompts', promptData);
+    if (newPrompt) {
+      mutate(); // Re-fetch the list after creation
+    }
     return newPrompt;
   };
 
-  const updatePrompt = async (
-    promptId: string,
-    updateData: Partial<Pick<Prompt, 'name' | 'task_description'>>
-  ): Promise<Prompt> => {
-    const updatedPrompt = await apiClient.patch<Prompt>(`/prompts/${promptId}`, updateData);
-    // Revalidate both the list and the specific detail views
-    mutate('/prompts/');
-    mutate(`/prompts/${promptId}`);
-    return updatedPrompt;
-  };
-
-  const deletePrompt = async (promptId: string): Promise<void> => {
+  const deletePrompt = async (promptId: string) => {
+    // CORRECTED: The path is now just '/prompts/PROMPT_ID'.
     await apiClient.del(`/prompts/${promptId}`);
-    mutate('/prompts/');
+    mutate(); // Re-fetch the list after deletion
   };
 
-  return { createPrompt, updatePrompt, deletePrompt };
+  return {
+    prompts: data,
+    isLoading,
+    isError: error,
+    createPrompt,
+    deletePrompt,
+  };
+}
+
+export function usePrompt(promptId: string) {
+  const { data, error, isLoading } = useSWR(
+    // CORRECTED: The path is now just '/prompts/PROMPT_ID'.
+    promptId ? `/prompts/${promptId}` : null,
+    singleFetcher
+  );
+
+  return {
+    prompt: data,
+    isLoading,
+    isError: error,
+  };
 }
