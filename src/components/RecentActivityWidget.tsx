@@ -1,11 +1,10 @@
-// src/components/RecentActivityWidget.tsx
 'use client';
 
 import Link from 'next/link';
-import { ActivityLog } from '@/hooks/useRecentActivity'; // Import the correct type
+import { ActivityItem } from '@/types/prompt';
 
 interface RecentActivityWidgetProps {
-  activities: ActivityLog[]; // Changed from recentVersions to activities
+  activities: ActivityItem[];
   loading: boolean;
   isError: any;
 }
@@ -32,10 +31,11 @@ const RecentActivityWidget = ({ activities, loading, isError }: RecentActivityWi
     <div className="bg-gray-800 p-4 rounded-lg">
       <h3 className="text-xl font-bold mb-4">Recent Activity</h3>
       <ul className="space-y-3">
-        {(activities || []).map((activity) => (
-          <li key={activity.id} className="flex justify-between items-center text-sm p-2 rounded-md hover:bg-gray-700/50">
+        {(activities || []).map((activity, index) => (
+          // FINAL FIX: Make the key more robust by including the index
+          <li key={`${activity.id}-${index}`} className="flex justify-between items-center text-sm p-2 rounded-md hover:bg-gray-700/50">
             <div>
-              <Link href={`/prompts/${activity.prompt_name}`} className="font-semibold text-indigo-400 hover:underline">
+              <Link href={`/prompts/${activity.prompt_id}`} className="font-semibold text-indigo-400 hover:underline">
                 {activity.prompt_name}
               </Link>
               <span className="text-gray-400 ml-2">v{activity.version_number}</span>

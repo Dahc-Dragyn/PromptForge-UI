@@ -2,46 +2,40 @@
 'use client';
 
 import { useState } from 'react';
+import { usePromptRatingMutations } from '@/hooks/usePromptRatings'; // CORRECTED: Import the new mutations hook
 import { StarIcon } from '@heroicons/react/24/solid';
+import toast from 'react-hot-toast';
 
+// This component is now "dumb" and receives all data as props.
 interface InteractiveRatingProps {
   promptId: string;
-  currentRating: number;
+  averageRating: number;
   ratingCount: number;
-  onRate: (promptId: string, newRating: number) => void;
-  // --- NEW: Add a prop for the removal function ---
-  onRemoveRating: (promptId: string) => void;
-  isSubmitting: boolean;
 }
 
-const InteractiveRating = ({
-  promptId,
-  currentRating,
-  ratingCount,
-  onRate,
-  onRemoveRating, // <-- new prop
-  isSubmitting,
-}: InteractiveRatingProps) => {
+const InteractiveRating = ({ promptId, averageRating, ratingCount }: InteractiveRatingProps) => {
+  // CORRECTED: Use the new mutations hook, which does not fetch data.
+  const { ratePrompt, removeRating, isSubmitting } = usePromptRatingMutations();
   const [hoverRating, setHoverRating] = useState(0);
 
-  // --- NEW: Handle click logic to either rate or un-rate ---
   const handleClick = (starValue: number) => {
-    // If the user clicks the star that represents the current rating,
-    // and there is at least one rating, trigger the remove function.
-    if (starValue === Math.round(currentRating) && ratingCount > 0) {
-      onRemoveRating(promptId);
-    } else {
-      onRate(promptId, starValue);
-    }
-  };
+    const action = (starValue === Math.round(averageRating) && ratingCount > 0)
+      ? removeRating(promptId)
+      : ratePrompt(promptId, starValue);
 
+    toast.promise(action, {
+      loading: 'Submitting rating...',
+      success: 'Rating updated!',
+      error: (err) => err.message || 'Failed to update rating.',
+    });
+  };
+  
   return (
     <div className="flex items-center space-x-2 mt-2">
       <div className="flex">
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             key={star}
-            // --- MODIFIED: Use the new handleClick function ---
             onClick={() => handleClick(star)}
             onMouseEnter={() => setHoverRating(star)}
             onMouseLeave={() => setHoverRating(0)}
@@ -50,7 +44,7 @@ const InteractiveRating = ({
           >
             <StarIcon
               className={`w-5 h-5 transition-colors ${
-                (hoverRating >= star || currentRating >= star)
+                (hoverRating >= star || Math.round(averageRating) >= star)
                   ? 'text-yellow-400'
                   : 'text-gray-600'
               }`}
@@ -59,9 +53,9 @@ const InteractiveRating = ({
         ))}
       </div>
       {ratingCount > 0 && (
-         <p className="text-xs text-gray-400">
-           {currentRating.toFixed(1)} ({ratingCount})
-         </p>
+       <p className="text-xs text-gray-400">
+         {averageRating.toFixed(1)} ({ratingCount})
+       </p>
       )}
     </div>
   );

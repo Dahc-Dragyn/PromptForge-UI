@@ -2,52 +2,51 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
-import { PromptMetric } from '@/hooks/usePromptMetrics'; // Import the API data type
-
-// This is the shape the component's UI expects
-interface HydratedTopPrompt {
-  id: string;
-  name: string;
-  averageRating: number;
-  executionCount: number;
-  // This property is not provided by the API, so we make it optional or default it.
-  ratingCount?: number; 
-}
+// CORRECTED: Import the renamed type 'PromptMetric'
+import { PromptMetric } from '@/hooks/usePromptMetrics';
+import { StarIcon } from '@heroicons/react/24/solid';
 
 interface TopPromptsWidgetProps {
-  topPrompts: PromptMetric[]; // Accept the API data shape directly
+  // CORRECTED: Use the PromptMetric type
+  topPrompts: PromptMetric[];
   loading: boolean;
-  isError: any;
+  isError: boolean;
 }
 
 const TopPromptsWidget = ({ topPrompts, loading, isError }: TopPromptsWidgetProps) => {
-  // Use useMemo to transform the props safely
-  const hydratedPrompts: HydratedTopPrompt[] = useMemo(() => {
-    return (topPrompts || []).map(p => ({
-      id: p.id,
-      name: p.name,
-      averageRating: p.average_rating,
-      executionCount: p.execution_count,
-      ratingCount: 0, // Defaulting ratingCount as it's not in the API response
-    }));
-  }, [topPrompts]);
+  if (loading) {
+    return (
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <h3 className="font-bold text-lg mb-2">Top Prompts</h3>
+        <p>Loading analytics...</p>
+      </div>
+    );
+  }
 
-  if (loading) return <div className="bg-gray-800 p-4 rounded-lg">Loading Top Prompts...</div>;
-  if (isError) return <div className="bg-gray-800 p-4 rounded-lg text-red-400">Could not load prompts.</div>;
+  if (isError) {
+    return (
+      <div className="bg-gray-800 p-4 rounded-lg">
+        <h3 className="font-bold text-lg mb-2">Top Prompts</h3>
+        <p className="text-red-400">Could not load prompts.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gray-800 p-4 rounded-lg">
-      <h3 className="text-xl font-bold mb-4">Top Prompts</h3>
-      <ul className="space-y-3">
-        {hydratedPrompts.map((prompt) => (
-          <li key={prompt.id} className="text-sm">
-            <Link href={`/prompts/${prompt.id}`} className="font-semibold text-indigo-400 hover:underline">
-              {prompt.name}
+      <h3 className="font-bold text-lg mb-2">Top Prompts by Rating</h3>
+      <ul className="space-y-2">
+        {topPrompts.map((prompt, index) => (
+          <li key={prompt.id} className="text-sm p-2 rounded-md hover:bg-gray-700">
+            <Link href={`/prompts/${prompt.id}`} className="font-semibold text-indigo-400">
+              {index + 1}. {prompt.name}
             </Link>
-            <div className="text-xs text-gray-400 flex justify-between">
-              <span>Executions: {prompt.executionCount}</span>
-              <span>Avg. Rating: {prompt.averageRating.toFixed(2)}</span>
+            <div className="text-xs text-gray-400 flex justify-between items-center mt-1">
+              <span>Executions: {prompt.execution_count || 0}</span>
+              <span className="flex items-center gap-1">
+                <StarIcon className="w-4 h-4 text-yellow-400" />
+                {(prompt.average_rating || 0).toFixed(1)}
+              </span>
             </div>
           </li>
         ))}

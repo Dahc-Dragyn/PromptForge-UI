@@ -1,15 +1,14 @@
-// src/app/dashboard/page.tsx
 'use client';
 
 import { useState, Suspense, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import Link from 'next/link';
 
 // Context and Hooks
 import { useAuth } from '@/context/AuthContext';
-// FIXED: Removed usePromptMutations from import
 import { usePrompts } from '@/hooks/usePrompts';
-import { usePromptTemplates, useTemplateMutations } from '@/hooks/usePromptTemplates';
+import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useTopPrompts } from '@/hooks/usePromptMetrics';
 import { useRecentActivity } from '@/hooks/useRecentActivity';
 import { PromptComposerProvider } from '@/context/PromptComposerContext';
@@ -17,12 +16,10 @@ import { PromptComposerProvider } from '@/context/PromptComposerContext';
 // Components
 import Modal from '@/components/Modal';
 import PromptComposer from '@/components/PromptComposer';
-import TemplateForm from '@/components/TemplateForm';
+import TemplateForm, { TemplateFormData } from '@/components/TemplateForm';
 import TopPromptsWidget from '@/components/TopPromptsWidget';
 import RecentActivityWidget from '@/components/RecentActivityWidget';
-import QuickExecuteModal from '@/components/QuickExecuteModal';
-import { Prompt } from '@/types/prompt';
-import Link from 'next/link';
+import InteractiveRating from '@/components/InteractiveRating';
 
 const DashboardContent = () => {
     const { user, loading: authLoading } = useAuth();
@@ -30,35 +27,32 @@ const DashboardContent = () => {
 
     const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState(false);
     
-    // FIXED: Destructured deletePrompt directly from the usePrompts hook
     const { prompts, isLoading: promptsLoading, isError: promptsError, deletePrompt } = usePrompts();
-    
-    const { templates, isLoading: templatesLoading, isError: templatesError } = usePromptTemplates();
-    const { createTemplate } = useTemplateMutations();
-
+    const { templates, isLoading: templatesLoading, isError: templatesError, createTemplate } = usePromptTemplates();
     const { activities, isLoading: activityLoading, isError: activityError } = useRecentActivity();
     const { topPrompts, isLoading: metricsLoading, isError: metricsError } = useTopPrompts();
 
-    // Memoized data with null-safety
-    const visiblePrompts = useMemo(() => {
-        return (prompts ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    }, [prompts]);
-
-    const visibleTemplates = useMemo(() => {
-        return (templates ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    }, [templates]);
+    const visiblePrompts = useMemo(() => (prompts ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [prompts]);
+    const visibleTemplates = useMemo(() => (templates ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [templates]);
 
     const handleDeletePrompt = async (promptId: string) => {
         if (window.confirm('Are you sure you want to delete this prompt? This action cannot be undone.')) {
-            toast.promise(
-                deletePrompt(promptId),
-                {
-                    loading: 'Deleting prompt...',
-                    success: 'Prompt successfully deleted!',
-                    error: (err) => err.message || 'Failed to delete prompt.'
-                }
-            );
+            toast.promise(deletePrompt(promptId), {
+                loading: 'Deleting prompt...',
+                success: 'Prompt successfully deleted!',
+                error: (err) => err.message || 'Failed to delete prompt.'
+            });
         }
+    };
+
+    const handleCreateTemplate = async (data: TemplateFormData) => {
+        const promise = createTemplate(data);
+        await toast.promise(promise, {
+            loading: 'Creating template...',
+            success: 'Template created!',
+            error: 'Failed to create template.'
+        });
+        setIsCreateTemplateModalOpen(false);
     };
 
     if (authLoading) return <div className="text-center p-8 text-white">Authenticating...</div>;
@@ -70,24 +64,14 @@ const DashboardContent = () => {
     return (
         <>
             <div className="p-4 sm:p-8 bg-gray-900 min-h-screen text-white">
-                <div className="flex justify-between items-center mb-6">
-                    <h1 className="text-3xl font-bold">Dashboard</h1>
-                </div>
+                <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
 
                 <div className="mb-8">
                     <h2 className="text-2xl font-bold mb-4 text-indigo-300">Prompt Hub</h2>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <TopPromptsWidget
-                            topPrompts={topPrompts ?? []}
-                            loading={metricsLoading}
-                            isError={metricsError}
-                        />
+                        <TopPromptsWidget topPrompts={topPrompts ?? []} loading={metricsLoading} isError={metricsError} />
                         <div className="lg:col-span-2">
-                            <RecentActivityWidget
-                                activities={activities ?? []}
-                                loading={activityLoading}
-                                isError={activityError}
-                            />
+                            <RecentActivityWidget activities={activities ?? []} loading={activityLoading} isError={activityError} />
                         </div>
                     </div>
                 </div>
@@ -101,8 +85,8 @@ const DashboardContent = () => {
                         <div className="bg-gray-800 p-4 rounded-lg flex-grow overflow-y-auto">
                             {templatesLoading && <p>Loading templates...</p>}
                             {templatesError && <p className="text-red-400">Could not load templates.</p>}
-                            {visibleTemplates.map(template => (
-                                <div key={template.id} className="p-2 hover:bg-gray-700 rounded">
+                            {visibleTemplates.map((template, index) => (
+                                <div key={`template-${template.id}-${index}`} className="p-2 hover:bg-gray-700 rounded">
                                       <Link href={`/templates/${template.id}`} className="font-semibold text-blue-400">{template.name}</Link>
                                       <p className="text-sm text-gray-400 truncate">{template.description}</p>
                                 </div>
@@ -115,10 +99,19 @@ const DashboardContent = () => {
                         <div className="bg-gray-800 p-4 rounded-lg flex-grow overflow-y-auto">
                             {promptsLoading && <p>Loading prompts...</p>}
                             {promptsError && <p className="text-red-400">Could not load prompts.</p>}
-                            {visiblePrompts.map(prompt => (
-                                <div key={prompt.id} className="flex justify-between items-center p-2 hover:bg-gray-700 rounded">
-                                    <Link href={`/prompts/${prompt.id}`} className="font-semibold text-indigo-400">{prompt.name}</Link>
-                                    <button onClick={() => handleDeletePrompt(prompt.id)} className="text-red-500 hover:text-red-400 text-xs">Delete</button>
+                            {visiblePrompts.map((prompt, index) => (
+                                <div key={`prompt-${prompt.id}-${index}`} className="p-3 hover:bg-gray-700 rounded-lg">
+                                    <div className="flex justify-between items-start">
+                                        <Link href={`/prompts/${prompt.id}`} className="font-semibold text-indigo-400 mb-1 block">{prompt.name}</Link>
+                                        <button onClick={() => handleDeletePrompt(prompt.id)} className="text-red-600 hover:text-red-500 text-xs font-semibold">DELETE</button>
+                                    </div>
+                                    <p className="text-sm text-gray-400 line-clamp-2 mb-2">{prompt.description}</p>
+                                    {/* CORRECTED: Pass rating data down as props */}
+                                    <InteractiveRating 
+                                        promptId={prompt.id} 
+                                        averageRating={prompt.average_rating ?? 0}
+                                        ratingCount={prompt.rating_count ?? 0}
+                                    />
                                 </div>
                             ))}
                         </div>
@@ -136,17 +129,7 @@ const DashboardContent = () => {
             </div>
 
             <Modal isOpen={isCreateTemplateModalOpen} onClose={() => setIsCreateTemplateModalOpen(false)} title="Create New Template">
-                <TemplateForm
-                    onSubmit={async (data) => {
-                        await toast.promise(createTemplate(data), {
-                            loading: 'Creating template...',
-                            success: 'Template created!',
-                            error: 'Failed to create template.'
-                        });
-                        setIsCreateTemplateModalOpen(false);
-                    }}
-                    onCancel={() => setIsCreateTemplateModalOpen(false)}
-                />
+                <TemplateForm onSubmit={handleCreateTemplate} onCancel={() => setIsCreateTemplateModalOpen(false)} />
             </Modal>
         </>
     );

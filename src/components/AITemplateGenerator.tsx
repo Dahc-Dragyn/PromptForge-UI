@@ -2,81 +2,76 @@
 'use client';
 
 import { useState } from 'react';
+import toast from 'react-hot-toast';
+import { apiClient } from '@/lib/apiClient';
+import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 
 const AITemplateGenerator = () => {
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const { createTemplate } = usePromptTemplates(); // Use the mutation function from the hook
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    setError(null);
-    setSuccess(null);
-
-    if (!description) {
-      setError('A description is required to generate a template.');
-      setIsSubmitting(false);
+    if (!description.trim()) {
+      toast.error('A description is required to generate a template.');
       return;
     }
 
+    setIsSubmitting(true);
+
     const payload = {
-      style_description: description,
-      tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+      // NOTE: The backend expects 'description' and 'content' for a new template.
+      // We are using the user's description as the basis for both.
+      // A more advanced implementation might generate content separately.
+      name: `${description.substring(0, 25)}... (AI)`,
+      description: `AI-generated template for: "${description}"`,
+      content: description, // The backend can enhance this if needed, or we can pre-generate.
+      tags: tags.split(',').map(tag => tag.trim()).filter(Boolean),
     };
 
-    try {
-      const response = await fetch('https://db4f-24-22-90-227.ngrok-free.app/api/promptforge/templates/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+    const promise = createTemplate(payload);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to generate template.');
-      }
-
-      setSuccess(`Successfully generated and saved template: "${data.name}"`);
-      // Reset form
-      setDescription('');
-      setTags('');
-
-    } catch (err: any) {
-      console.error("Error generating template via API:", err);
-      setError(err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    toast.promise(promise, {
+      loading: 'Generating template...',
+      success: (newTemplate) => {
+        // Reset form on success
+        setDescription('');
+        setTags('');
+        return `Template "${newTemplate.name}" created!`;
+      },
+      error: (err) => err.message || 'Failed to generate template.',
+    });
+    
+    // We handle the final state within the toast promise
+    promise.finally(() => {
+        setIsSubmitting(false);
+    });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 border rounded-lg">
-      <h2 className="text-xl font-bold mb-4">AI Template Generator</h2>
-      <p className="text-sm text-gray-400 mb-4">Describe the template you want, and the AI will create it for you.</p>
-      
-      {error && <p className="text-red-500 mb-2">{error}</p>}
-      {success && <p className="text-green-500 mb-2">{success}</p>}
+    <form onSubmit={handleSubmit} className="p-4 border rounded-lg bg-gray-800">
+      <h2 className="text-xl font-bold mb-4">AI-Assisted Template Creation</h2>
+      <p className="text-sm text-gray-400 mb-4">Describe the template content, and the AI will create and save it for you.</p>
 
       <div className="mb-4">
-        <label htmlFor="gen-description" className="block text-sm font-medium">
-          Template Description
+        <label htmlFor="gen-description" className="block text-sm font-medium text-gray-300 mb-1">
+          Template Description / Content
         </label>
         <textarea 
           id="gen-description" 
           value={description} 
           onChange={(e) => setDescription(e.target.value)} 
-          className="w-full border rounded p-2 text-black" 
+          className="w-full border rounded p-2 text-black bg-gray-200" 
           rows={3}
-          placeholder="e.g., A persona for a skeptical pirate"
+          placeholder="e.g., A persona for a skeptical pirate who questions every command."
+          required
         ></textarea>
       </div>
       
       <div className="mb-4">
-        <label htmlFor="gen-tags" className="block text-sm font-medium">
+        <label htmlFor="gen-tags" className="block text-sm font-medium text-gray-300 mb-1">
           Tags (comma-separated)
         </label>
         <input 
@@ -84,13 +79,13 @@ const AITemplateGenerator = () => {
           type="text" 
           value={tags} 
           onChange={(e) => setTags(e.target.value)} 
-          className="w-full border rounded p-2 text-black"
+          className="w-full border rounded p-2 text-black bg-gray-200"
           placeholder="e.g., persona, pirate, fantasy"
         />
       </div>
 
-      <button type="submit" disabled={isSubmitting || !description} className="mt-4 px-4 py-2 bg-indigo-500 text-white rounded disabled:opacity-50 hover:bg-indigo-600 transition-colors">
-        {isSubmitting ? 'Generating...' : 'Generate Template'}
+      <button type="submit" disabled={isSubmitting || !description} className="w-full mt-2 py-2 bg-indigo-600 text-white rounded disabled:opacity-50 hover:bg-indigo-700 transition-colors">
+        {isSubmitting ? 'Generating...' : 'Generate & Save Template'}
       </button>
     </form>
   );

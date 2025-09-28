@@ -2,7 +2,8 @@
 import useSWR from 'swr';
 import { apiClient } from '@/lib/apiClient';
 
-// This is the shape of the data returned by the backend API
+// CORRECTED: Interface properties now use snake_case to match the API response.
+// Renamed to PromptMetric for clarity.
 export interface PromptMetric {
   id: string;
   name: string;

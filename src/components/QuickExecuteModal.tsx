@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { apiClient } from '@/lib/apiClient'; // CORRECT: Import the apiClient
+import { apiClient } from '@/lib/apiClient';
 import Modal from './Modal';
 import AutoSizingTextarea from './AutoSizingTextarea';
 
@@ -18,7 +18,8 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
   const [variables, setVariables] = useState('');
   const [result, setResult] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [model, setModel] = useState('gemini-1.5-flash');
+  // CORRECTED: Set the default model to the cost-effective standard
+  const [model, setModel] = useState('gemini-2.5-flash-lite');
 
   const handleExecute = async () => {
     setIsLoading(true);

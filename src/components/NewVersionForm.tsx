@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { useVersionMutations } from '@/hooks/usePromptVersions';
+import { usePromptVersions } from '@/hooks/usePromptVersions';
 import AutoSizingTextarea from './AutoSizingTextarea';
 
 interface NewVersionFormProps {
@@ -13,7 +13,7 @@ interface NewVersionFormProps {
 const NewVersionForm = ({ promptId }: NewVersionFormProps) => {
   const [promptText, setPromptText] = useState('');
   const [commitMessage, setCommitMessage] = useState('');
-  const { createVersion } = useVersionMutations();
+  const { createVersion } = usePromptVersions(promptId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +22,7 @@ const NewVersionForm = ({ promptId }: NewVersionFormProps) => {
       return;
     }
 
-    const promise = createVersion(promptId, promptText, commitMessage);
+    const promise = createVersion(promptText, commitMessage);
 
     toast.promise(promise, {
       loading: 'Creating new version...',

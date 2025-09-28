@@ -1,27 +1,30 @@
 // src/types/prompt.ts
 export interface PromptVersion {
   id: string;
-  version: number;
-  text: string;
-  model: string;
-  temperature: number;
-  created_at: string; 
+  version_number: number;
+  prompt_text: string;
+  commit_message?: string;
+  created_at: string;
 }
 
 export interface Prompt {
   id: string;
   name: string;
-  description?: string; // ADDED: This field is now part of the Prompt type
-  text: string;
+  description: string;
   created_at: string;
   updated_at: string;
-  versions?: PromptVersion[];
-  tags: string[];
+  // ADDED: Include rating data directly in the prompt object
+  average_rating?: number;
+  rating_count?: number;
 }
 
+// This type is used by the recent activity widget
 export interface ActivityItem {
   id: string;
-  name: string;
-  type: 'prompt' | 'template';
-  timestamp: string; 
+  prompt_id: string;
+  prompt_name: string;
+  version_number: number;
+  user_name: string;
+  event_type: 'creation' | 'update' | 'execution';
+  timestamp: string;
 }

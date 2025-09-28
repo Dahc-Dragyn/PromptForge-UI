@@ -5,14 +5,14 @@ import { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { StarIcon } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
-import { authenticatedFetch } from '@/lib/apiClient';
+import { apiClient } from '@/lib/apiClient';
+import { usePromptRatings } from '@/hooks/usePromptRatings'; // Import our new hook
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
-
+// Define the shape of the version prop locally for this component
 interface Version {
   version_number: number;
   prompt_text: string;
-  commit_message: string;
+  commit_message?: string;
 }
 
 interface RatingModalProps {
@@ -29,9 +29,11 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
 
   const [currentRating, setCurrentRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
+  
+  // Use our SWR hook for rating mutations
+  const { ratePrompt, isSubmitting } = usePromptRatings(promptId);
 
+  // Reset state when the modal is opened
   useEffect(() => {
     if (isOpen) {
       setResult(null);
@@ -39,8 +41,6 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
       setError(null);
       setCurrentRating(0);
       setHoverRating(0);
-      setIsSubmitting(false);
-      setShowSuccess(false);
     }
   }, [isOpen]);
 
@@ -50,22 +50,16 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
     setError(null);
     setResult(null);
     setCurrentRating(0);
-    setShowSuccess(false);
 
     try {
       const startTime = performance.now();
-      const response = await authenticatedFetch(`${API_BASE_URL}/prompts/execute`, {
-        method: 'POST',
-        body: JSON.stringify({
-          prompt_text: version.prompt_text,
-          model: 'gemini-2.5-flash-lite',
-          variables: {},
-        }),
+      // CORRECTED: Use apiClient and relative path
+      const data = await apiClient.post<{ final_text: string }>('/prompts/execute', {
+        prompt_text: version.prompt_text,
+        model: 'gemini-2.5-flash-lite',
+        variables: {},
       });
       const endTime = performance.now();
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Failed to execute prompt.');
       
       setResult({
         text: data.final_text,
@@ -73,49 +67,29 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
       });
 
     } catch (err: any) {
-      setError(err.message);
-      toast.error(err.message);
+      const errorMessage = err.message || 'Failed to execute prompt.';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleRatingSubmit = async (newRating: number) => {
-    if (!result || isSubmitting || !version) return;
+    if (!result || isSubmitting) return;
 
-    setIsSubmitting(true);
     setCurrentRating(newRating);
     
-    const payload = {
-      prompt_id: promptId,
-      version_number: version.version_number,
-      rating: newRating,
-    };
+    const promise = ratePrompt(newRating);
 
-    try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/metrics/ratings`, {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
+    toast.promise(promise, {
+        loading: 'Saving rating...',
+        success: 'Rating saved!',
+        error: 'Failed to save rating.'
+    });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to submit rating.");
-      }
-
-      setShowSuccess(true);
-      toast.success("Rating saved!");
-      setTimeout(() => {
-        setShowSuccess(false);
-        onClose();
-      }, 1500);
-    } catch (error: any) {
-      console.error("Rating submission failed:", error);
-      setCurrentRating(0);
-      toast.error(error.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    // Close modal after success
+    promise.then(onClose);
   };
 
   if (!version) return null;
@@ -124,7 +98,7 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
     <Modal isOpen={isOpen} onClose={onClose} title={`Test & Rate Prompt Version ${version.version_number}`}>
       <div className="space-y-4 text-white">
         <div>
-          <p className="text-sm text-gray-400 mb-2">Commit: <span className="italic text-gray-300">"{version.commit_message}"</span></p>
+          <p className="text-sm text-gray-400 mb-2">Commit: <span className="italic text-gray-300">"{version.commit_message || 'N/A'}"</span></p>
           <label className="block text-sm font-medium text-gray-400 mb-1">Prompt Text</label>
           <pre className="whitespace-pre-wrap text-gray-200 bg-gray-900 p-3 rounded-md text-sm font-mono max-h-32 overflow-y-auto">
             {version.prompt_text}
@@ -173,7 +147,6 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
                     />
                   </button>
                 ))}
-                {showSuccess && <p className="ml-4 text-xs text-green-400 animate-pulse">Rating saved!</p>}
               </div>
             </div>
 
