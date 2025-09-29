@@ -1,132 +1,126 @@
-// src/components/SaveTemplatesModal.tsx
+// src/components/SavePromptModal.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { usePrompts } from '@/hooks/usePrompts';
+import { apiClient } from '@/lib/apiClient';
+import Modal from './Modal';
+import { AI_MODEL } from './AiAssistant';
 
-// --- MOCKED DEPENDENCIES ---
-interface ModalProps { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode; }
-const Modal = ({ isOpen, onClose, title, children }: ModalProps) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4">
-      <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md border border-gray-700">
-        <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-600">
-          <h3 className="text-xl font-semibold text-white">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
-        </div>
-        <div>{children}</div>
-      </div>
-    </div>
-  );
-};
-const apiClient = {
-  post: async <T,>(url: string, body: any): Promise<T> => {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-      throw new Error(errorData.detail || 'An API error occurred');
-    }
-    return response.json();
-  },
-};
-const usePromptTemplates = () => ({
-    createTemplate: async (templateData: any) => {
-      console.log('Mock creating template:', templateData);
-      return apiClient.post('/api/templates', templateData);
-    },
-    mutate: () => {
-      console.log('Mock mutate templates called.');
-    }
-});
-// ---
-
-interface SaveTemplatesModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    newPersonaName: string;
-    setNewPersonaName: (name: string) => void;
-    newTasskName: string;
-    setNewTaskName: (name: string) => void;
-    recommendationGoal: string;
-    aiSuggestedPersona: string;
-    aiSuggestedTask: string;
+interface SavePromptModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  promptText: string;
+  onPromptSaved?: () => void;
 }
 
-const SaveTemplatesModal: React.FC<SaveTemplatesModalProps> = ({
-    isOpen,
-    onClose,
-    newPersonaName,
-    setNewPersonaName,
-    newTasskName,
-    setNewTaskName,
-    recommendationGoal,
-    aiSuggestedPersona,
-    aiSuggestedTask
-}) => {
-    const [isSavingPersona, setIsSavingPersona] = useState(false);
-    const [isSavingTask, setIsSavingTask] = useState(false);
-    const [personaSaved, setPersonaSaved] = useState(false);
-    const [taskSaved, setTaskSaved] = useState(false);
-    const { createTemplate, mutate: mutateTemplates } = usePromptTemplates();
+const SavePromptModal: React.FC<SavePromptModalProps> = ({ isOpen, onClose, promptText, onPromptSaved }) => {
+    const [name, setName] = useState('');
+    const [description, setDescription] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const { createPrompt } = usePrompts();
 
-    const handleSaveTemplate = async (type: 'persona' | 'task') => {
-        const isPersona = type === 'persona';
-        if (isPersona) setIsSavingPersona(true); else setIsSavingTask(true);
+    useEffect(() => {
+        if (isOpen && promptText) {
+            const generateDetails = async () => {
+                setIsGenerating(true);
+                try {
+                    const namePromise = apiClient.post<{ final_text: string }>('/prompts/execute', {
+                        prompt_text: `Generate a concise, 3-5 word title for the following prompt. Output only the title, with no quotes:\n\n${promptText}`,
+                        model: AI_MODEL,
+                    });
+                    const descPromise = apiClient.post<{ final_text: string }>('/prompts/execute', {
+                        prompt_text: `Generate a one-sentence description for the following prompt:\n\n${promptText}`,
+                        model: AI_MODEL,
+                    });
+
+                    const [nameRes, descRes] = await Promise.all([namePromise, descPromise]);
+                    setName(nameRes.final_text.trim().replace(/"/g, ''));
+                    setDescription(descRes.final_text.trim());
+                } catch (error) {
+                    toast.error('Could not generate prompt details.');
+                } finally {
+                    setIsGenerating(false);
+                }
+            };
+            generateDetails();
+        } else {
+            setName('');
+            setDescription('');
+        }
+    }, [isOpen, promptText]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSaving(true);
         
-        const templateData = {
-          name: isPersona ? newPersonaName : newTasskName,
-          description: `AI-generated ${type} for goal: ${recommendationGoal}`,
-          content: isPersona ? aiSuggestedPersona : aiSuggestedTask,
-          tags: [type, 'ai-generated'],
-        };
-    
-        const promise = createTemplate(templateData);
-        
-        await toast.promise(promise, {
-            loading: `Saving ${type} template...`,
-            success: () => {
-                if (isPersona) setPersonaSaved(true); else setTaskSaved(true);
-                mutateTemplates();
-                return `${type.charAt(0).toUpperCase() + type.slice(1)} template saved!`;
-            },
-            error: (err) => (err as Error).message || `Failed to save ${type} template.`
+        // --- FIX: Mapped state to the correct backend field names ---
+        const promise = createPrompt({
+            name,
+            task_description: description, // Corrected from `description`
+            initial_prompt_text: promptText, // Corrected from `text`
         });
-    
-        if (isPersona) setIsSavingPersona(false); else setIsSavingTask(false);
+
+        await toast.promise(promise, {
+            loading: 'Saving new prompt...',
+            success: () => {
+                if (onPromptSaved) onPromptSaved();
+                onClose();
+                return 'Prompt saved successfully!';
+            },
+            error: (err) => {
+                // This makes the error toast more readable
+                const messages = err.message.split(',').join('\n');
+                return `Save failed:\n${messages}`;
+            },
+        });
+
+        setIsSaving(false);
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Save Generated Templates">
-            <div className="space-y-6">
-                <div className="p-4 bg-gray-700/50 rounded-lg">
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Persona Template Name</label>
-                    <div className="flex gap-2 items-center">
-                        <input type="text" value={newPersonaName} onChange={(e) => setNewPersonaName(e.target.value)} className="flex-grow border rounded p-2 bg-gray-700 border-gray-600 text-white" required />
-                        <button type="button" onClick={() => handleSaveTemplate('persona')} disabled={isSavingPersona || personaSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${personaSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
-                            {isSavingPersona ? 'Saving...' : personaSaved ? 'Saved!' : 'Save'}
-                        </button>
+        <Modal isOpen={isOpen} onClose={onClose} title="Save New Prompt">
+            <form onSubmit={handleSubmit}>
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="promptName" className="block text-sm font-medium text-gray-300 mb-1">Prompt Name</label>
+                        <input
+                            id="promptName"
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="w-full border rounded p-2 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-sky-500 focus:border-sky-500"
+                            placeholder={isGenerating ? "Generating name..." : "e.g., Professional Email Template"}
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="promptDescription" className="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                        <textarea
+                            id="promptDescription"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            rows={3}
+                            className="w-full border rounded p-2 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-sky-500 focus:border-sky-500"
+                            placeholder={isGenerating ? "Generating description..." : "A brief summary of what this prompt does."}
+                        />
+                    </div>
+                     <div className="p-3 bg-gray-900/50 rounded-md">
+                        <p className="text-sm font-medium text-gray-400 mb-1">Prompt Content:</p>
+                        <p className="text-sm text-gray-200 max-h-24 overflow-y-auto whitespace-pre-wrap break-words">{promptText}</p>
                     </div>
                 </div>
-                <div className="p-4 bg-gray-700/50 rounded-lg">
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Task Template Name</label>
-                    <div className="flex gap-2 items-center">
-                        <input type="text" value={newTasskName} onChange={(e) => setNewTaskName(e.target.value)} className="flex-grow border rounded p-2 bg-gray-700 border-gray-600 text-white" required />
-                        <button type="button" onClick={() => handleSaveTemplate('task')} disabled={isSavingTask || taskSaved} className={`px-4 py-2 text-white rounded w-28 transition-colors ${taskSaved ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'}`}>
-                            {isSavingTask ? 'Saving...' : taskSaved ? 'Saved!' : 'Save'}
-                        </button>
-                    </div>
+                <div className="mt-6 flex justify-end gap-3">
+                    <button type="button" onClick={onClose} className="py-2 px-4 bg-gray-600 text-white rounded hover:bg-gray-500">Cancel</button>
+                    <button type="submit" disabled={isSaving || isGenerating || !name} className="py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                        {isSaving ? 'Saving...' : 'Save Prompt'}
+                    </button>
                 </div>
-            </div>
-            <div className="mt-6 flex justify-end">
-                <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">Close</button>
-            </div>
-      </Modal>
+            </form>
+        </Modal>
     );
-}
+};
 
-export default SaveTemplatesModal;
+export default SavePromptModal;

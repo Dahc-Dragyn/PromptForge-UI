@@ -1,35 +1,83 @@
-// src/hooks/usePrompts.ts
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
 import { Prompt } from '@/types/prompt';
-import { mutate } from 'swr';
 
-const listFetcher = (url: string) => apiClient.get<Prompt[]>(url);
+// --- Type Definitions for Clarity ---
+interface PromptListData {
+  prompts: Prompt[];
+}
+
+// Frontend components will use this simple shape
+interface CreatePromptData {
+  name: string;
+  description: string;
+  text: string;
+}
+
+// The hook will map to this shape for the backend
+interface CreatePromptPayload {
+  name: string;
+  task_description: string;
+  initial_prompt_text: string;
+}
+
+// --- Fetchers ---
+const listFetcher = (url: string) => apiClient.get<PromptListData>(url);
 const singleFetcher = (url: string) => apiClient.get<Prompt>(url);
 
-export function usePrompts() {
-  const { data, error, isLoading } = useSWR('/prompts', listFetcher);
+// =================================================================================
+// --- HOOK DEFINITIONS ---
+// =================================================================================
 
-  const createPrompt = async (promptData: { name: string; description: string; text: string; }) => {
-    const newPrompt = await apiClient.post<Prompt>('/prompts', promptData);
-    mutate('/prompts');
+/**
+ * Hook for fetching and managing the list of all prompts.
+ */
+export function usePrompts() {
+  const endpoint = '/prompts/';
+  const { data, error, isLoading } = useSWR<PromptListData>(endpoint, listFetcher);
+
+  /**
+   * Creates a new prompt.
+   * Maps the simple frontend data structure to the required backend payload.
+   */
+  const createPrompt = async (promptData: CreatePromptData) => {
+    const payload: CreatePromptPayload = {
+      name: promptData.name,
+      task_description: promptData.description,
+      initial_prompt_text: promptData.text,
+    };
+    
+    const newPrompt = await apiClient.post<Prompt>(endpoint, payload);
+    
+    // Revalidate the SWR cache for the prompt list to update the UI
+    mutate(endpoint);
+    
     return newPrompt;
   };
 
+  /**
+   * Updates an existing prompt.
+   */
   const updatePrompt = async (promptId: string, updateData: Partial<Prompt>) => {
     const updatedPrompt = await apiClient.patch<Prompt>(`/prompts/${promptId}`, updateData);
-    mutate('/prompts'); // Revalidate the list
-    mutate(`/prompts/${promptId}`); // Revalidate the specific prompt
+    
+    // Revalidate both the list and the specific prompt detail view
+    mutate(endpoint);
+    mutate(`/prompts/${promptId}`);
+    
     return updatedPrompt;
   };
 
+  /**
+   * Deletes a prompt.
+   */
   const deletePrompt = async (promptId: string) => {
     await apiClient.del(`/prompts/${promptId}`);
-    mutate('/prompts');
+    mutate(endpoint); // Revalidate the list
   };
 
   return {
-    prompts: data,
+    prompts: data?.prompts,
     isLoading,
     isError: error,
     createPrompt,
@@ -38,7 +86,10 @@ export function usePrompts() {
   };
 }
 
-export function usePromptDetail(promptId: string) {
+/**
+ * Hook for fetching the details of a single prompt.
+ */
+export function usePromptDetail(promptId: string | null) {
   const { data, error, isLoading } = useSWR(
     promptId ? `/prompts/${promptId}` : null,
     singleFetcher

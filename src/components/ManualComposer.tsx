@@ -1,27 +1,11 @@
-// src/components/ManualComposer.tsx
 'use client';
 
 import React, { useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { Template } from './PromptComposer';
+import { apiClient } from '@/lib/apiClient'; // <-- CORRECTED: Using the real apiClient
 
-// --- MOCKED API Client (should be imported from a shared lib) ---
-const apiClient = {
-  post: async <T,>(url: string, body: any): Promise<T> => {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-      throw new Error(errorData.detail || 'An API error occurred');
-    }
-    return response.json();
-  },
-};
-// ---
-
+// --- CONSTANTS & HELPERS ---
 const STYLE_OPTIONS = [
   "professional", "humorous", "academic", "Direct Instruction", "Scenario-Based",
   "Hypothetical Questions", "Comparative Analysis", "Problem-Solving",
@@ -34,11 +18,15 @@ const findPrimaryTag = (template: Template) => {
     return template.tags.find(tag => tag !== 'persona' && tag !== 'task') || template.name;
 };
 
+// --- TYPE DEFINITIONS ---
 interface ManualComposerProps {
     templates: Template[];
     onCompose: (prompt: string) => void;
 }
 
+// =================================================================================
+// --- COMPONENT DEFINITION ---
+// =================================================================================
 const ManualComposer: React.FC<ManualComposerProps> = ({ templates = [], onCompose }) => {
     const [selectedPersonaId, setSelectedPersonaId] = useState('');
     const [selectedTaskId, setSelectedTaskId] = useState('');
@@ -81,6 +69,7 @@ const ManualComposer: React.FC<ManualComposerProps> = ({ templates = [], onCompo
         setLoading(true);
         const toastId = toast.loading('Composing from library...');
         try {
+            // This path is correct. apiClient will prepend "/api-proxy".
             const { composed_prompt } = await apiClient.post<{ composed_prompt: string }>('/templates/compose', {
                 persona: personaTag,
                 task: taskTag
@@ -99,22 +88,23 @@ const ManualComposer: React.FC<ManualComposerProps> = ({ templates = [], onCompo
     };
 
     return (
-        <div>
-            <h2 className="text-2xl font-bold mb-4">Manual Composer</h2>
+        <div className="p-4 border border-indigo-400/30 rounded-lg mt-6">
+            <h3 className="font-semibold text-lg mb-2 text-indigo-300">Manual Composer</h3>
+             <p className="text-sm text-gray-400 mb-4">Combine pre-existing templates from your library.</p>
             <div className="space-y-4">
-                <select value={selectedPersonaId} onChange={(e) => setSelectedPersonaId(e.target.value)} className="w-full border rounded p-2 bg-gray-700 border-gray-600 text-white">
+                <select value={selectedPersonaId} onChange={(e) => setSelectedPersonaId(e.target.value)} className="w-full border rounded p-2 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-indigo-500 focus:border-indigo-500">
                     <option value="">-- Choose a Persona --</option>
                     {personaOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.displayName}</option>)}
                 </select>
-                <select value={selectedTaskId} onChange={(e) => setSelectedTaskId(e.target.value)} className="w-full border rounded p-2 bg-gray-700 border-gray-600 text-white">
+                <select value={selectedTaskId} onChange={(e) => setSelectedTaskId(e.target.value)} className="w-full border rounded p-2 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-indigo-500 focus:border-indigo-500">
                     <option value="">-- Choose a Task --</option>
                     {taskOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.displayName}</option>)}
                 </select>
-                <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="w-full border rounded p-2 bg-gray-700 border-gray-600 text-white">
+                <select value={selectedStyle} onChange={(e) => setSelectedStyle(e.target.value)} className="w-full border rounded p-2 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-indigo-500 focus:border-indigo-500">
                     <option value="">-- No Specific Style --</option>
                     {STYLE_OPTIONS.map(style => <option key={style} value={style}>{style}</option>)}
                 </select>
-                <textarea value={userInstructions} onChange={(e) => setUserInstructions(e.target.value)} className="w-full border rounded p-2 bg-gray-700 border-gray-600 text-white" placeholder="Additional instructions..." rows={3} />
+                <textarea value={userInstructions} onChange={(e) => setUserInstructions(e.target.value)} className="w-full border rounded p-2 bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Additional instructions..." rows={3} />
             </div>
             <button onClick={handleComposeFromLibrary} disabled={loading || !selectedPersonaId || !selectedTaskId} className="w-full mt-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 font-semibold">
                 {loading ? 'Composing...' : 'Compose from Library'}
@@ -124,4 +114,3 @@ const ManualComposer: React.FC<ManualComposerProps> = ({ templates = [], onCompo
 }
 
 export default ManualComposer;
-

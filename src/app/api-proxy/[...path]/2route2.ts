@@ -1,3 +1,4 @@
+// src/app/api-proxy/[...path]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 async function handler(req: NextRequest) {
@@ -15,22 +16,19 @@ async function handler(req: NextRequest) {
   
   const targetUrl = `${backendUrl}/api/promptforge/api/v1${requestedPath}${req.nextUrl.search}`;
   
-  // Clone headers and modify them
   const headers = new Headers(req.headers);
   headers.set('host', new URL(targetUrl).host);
   headers.set('ngrok-skip-browser-warning', 'true');
+  // FINAL FIX 1: Add keep-alive header to stabilize connection
   headers.set('Connection', 'keep-alive');
-
-  // CORRECTED: Await the body properly for non-GET requests
-  const body = req.method !== 'GET' && req.method !== 'HEAD' ? await req.blob() : undefined;
 
   try {
     const response = await fetch(targetUrl, {
       method: req.method,
       headers: headers,
-      body: body, // Pass the awaited body
-      // @ts-ignore - The 'duplex' option is non-standard and can cause issues; it's better to remove it.
-      // duplex: 'half', 
+      body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+      // @ts-ignore
+      duplex: 'half', 
       redirect: 'follow'
     });
     
