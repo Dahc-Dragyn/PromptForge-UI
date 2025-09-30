@@ -56,28 +56,29 @@ const SavePromptModal: React.FC<SavePromptModalProps> = ({ isOpen, onClose, prom
         e.preventDefault();
         setIsSaving(true);
         
-        // --- FIX: Mapped state to the correct backend field names ---
-        const promise = createPrompt({
-            name,
-            task_description: description, // Corrected from `description`
-            initial_prompt_text: promptText, // Corrected from `text`
-        });
+        try {
+            const promise = createPrompt({
+                name,
+                description: description,
+                text: promptText,
+            });
 
-        await toast.promise(promise, {
-            loading: 'Saving new prompt...',
-            success: () => {
-                if (onPromptSaved) onPromptSaved();
-                onClose();
-                return 'Prompt saved successfully!';
-            },
-            error: (err) => {
-                // This makes the error toast more readable
-                const messages = err.message.split(',').join('\n');
-                return `Save failed:\n${messages}`;
-            },
-        });
-
-        setIsSaving(false);
+            await toast.promise(promise, {
+                loading: 'Saving new prompt...',
+                success: (newPrompt) => {
+                    if (onPromptSaved) onPromptSaved();
+                    onClose();
+                    return 'Prompt saved successfully!';
+                },
+                error: (err) => err.message || 'Failed to save prompt.',
+            });
+        } catch (error) {
+            // This catch is a fallback, but toast.promise handles most UI errors.
+            console.error("Save prompt failed:", error);
+        } finally {
+            // --- FIX: This ensures the button is re-enabled even if the promise fails ---
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -123,4 +124,5 @@ const SavePromptModal: React.FC<SavePromptModalProps> = ({ isOpen, onClose, prom
     );
 };
 
-export default SavePromptModal;
+// --- FIX: Export as a named export for consistency ---
+export { SavePromptModal };

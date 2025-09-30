@@ -41,6 +41,8 @@ export function usePrompts() {
    * Maps the simple frontend data structure to the required backend payload.
    */
   const createPrompt = async (promptData: CreatePromptData) => {
+    // --- THIS IS THE FIX ---
+    // It correctly maps the frontend-friendly names to the backend-required names.
     const payload: CreatePromptPayload = {
       name: promptData.name,
       task_description: promptData.description,

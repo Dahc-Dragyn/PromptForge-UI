@@ -1,10 +1,11 @@
+// src/app/sandbox/page.tsx
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, ChangeEvent } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { apiClient } from '@/lib/apiClient';
-import { usePrompts } from '@/hooks/usePrompts';
+import { usePromptMutations } from '@/hooks/usePrompts';
 import Modal from '@/components/Modal';
 import AutoSizingTextarea from '@/components/AutoSizingTextarea';
 import { TrashIcon, SparklesIcon } from '@heroicons/react/24/solid';
@@ -19,18 +20,16 @@ interface SandboxResult {
     error?: string;
 }
 
-// --- FIX: Updated model list to match backend ---
 const AVAILABLE_MODELS = [
-    { id: 'gemini-2.5-flash-lite', name: 'Google Gemini 2.5 Flash-Lite' },
-    { id: 'gpt-4o-mini', name: 'OpenAI GPT-4o Mini' },
+    { id: 'gemini-1.5-flash', name: 'Google Gemini 1.5 Flash' },
+    { id: 'gemini-1.5-pro', name: 'Google Gemini 1.5 Pro' },
 ];
-const AI_MODEL_ID = 'gemini-2.5-flash-lite';
 
 // --- Main Component ---
 function SandboxContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { createPrompt } = usePrompts();
+    const { createPrompt } = usePromptMutations();
 
     const [prompts, setPrompts] = useState<string[]>(['']);
     const [sharedInput, setSharedInput] = useState('');
@@ -46,14 +45,8 @@ function SandboxContent() {
     const [isGeneratingDetails, setIsGeneratingDetails] = useState(false);
 
     useEffect(() => {
-        const promptA = searchParams.get('promptA');
-        const promptB = searchParams.get('promptB');
-        if (promptA && promptB) {
-            setPrompts([decodeURIComponent(promptA), decodeURIComponent(promptB)]);
-        } else {
-            const singlePrompt = searchParams.get('prompt');
-            if (singlePrompt) setPrompts([decodeURIComponent(singlePrompt)]);
-        }
+        const urlPrompt = searchParams.get('prompt');
+        if (urlPrompt) setPrompts([decodeURIComponent(urlPrompt)]);
     }, [searchParams]);
 
     const handlePromptChange = (index: number, value: string) => {
@@ -81,7 +74,7 @@ function SandboxContent() {
         try {
             const response = await apiClient.post<{ final_text: string }>('/prompts/execute', {
                 prompt_text: metaPrompt,
-                model: AI_MODEL_ID
+                model: 'gemini-1.5-flash'
             });
             const newVariation = response.final_text.trim().replace(/^"|"$/g, '');
             setPrompts(p => [...p, newVariation]);
@@ -102,17 +95,14 @@ function SandboxContent() {
         const toastId = toast.loading('Running A/B test...');
 
         try {
-            // --- FIX: Corrected the entire payload structure ---
             const payload = {
-                model: selectedModel,
-                input_text: sharedInput,
+                model_name: selectedModel,
                 prompts: activePrompts.map(p => ({
-                    id: p.id,
-                    text: p.text,
+                    prompt_id: p.id,
+                    prompt_text: p.text.replace(/{shared_input}/g, sharedInput),
                 }))
             };
-            
-            const response = await apiClient.post<{ results: SandboxResult[] }>('/sandbox/run', payload);
+            const response = await apiClient.post<{ results: SandboxResult[] }>('/sandbox/run-ab-test', payload);
             setResults(response.results);
             toast.success('Test complete!', { id: toastId });
         } catch (err: any) {
@@ -129,8 +119,8 @@ function SandboxContent() {
         setNewPromptDescription('');
         setIsGeneratingDetails(true);
         try {
-            const namePromise = apiClient.post<{final_text: string}>('/prompts/execute', { prompt_text: `Generate a 3-5 word title for this prompt: "${promptContent}"`, model: AI_MODEL_ID });
-            const descPromise = apiClient.post<{final_text: string}>('/prompts/execute', { prompt_text: `Generate a one-sentence description for this prompt: "${promptContent}"`, model: AI_MODEL_ID });
+            const namePromise = apiClient.post<{final_text: string}>('/prompts/execute', { prompt_text: `Generate a 3-5 word title for this prompt: "${promptContent}"`, model: 'gemini-1.5-flash' });
+            const descPromise = apiClient.post<{final_text: string}>('/prompts/execute', { prompt_text: `Generate a one-sentence description for this prompt: "${promptContent}"`, model: 'gemini-1.5-flash' });
             const [nameRes, descRes] = await Promise.all([namePromise, descPromise]);
             setNewPromptName(nameRes.final_text.trim().replace(/"/g, ''));
             setNewPromptDescription(descRes.final_text.trim());
@@ -144,12 +134,7 @@ function SandboxContent() {
     const handleSavePrompt = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
-        
-        const promise = createPrompt({
-            name: newPromptName,
-            description: newPromptDescription,
-            text: promptToSave,
-        });
+        const promise = createPrompt(newPromptName, newPromptDescription, promptToSave);
         
         toast.promise(promise, {
             loading: 'Saving prompt...',
@@ -160,6 +145,7 @@ function SandboxContent() {
         try {
             await promise;
             setIsSaveModalOpen(false);
+            router.push('/dashboard');
         } catch (error) {
             // Error is handled by the toast
         } finally {
@@ -181,7 +167,7 @@ function SandboxContent() {
                                         {prompts.length > 1 && <button onClick={() => removePromptVariation(index)}><TrashIcon className="h-5 w-5 text-red-500"/></button>}
                                     </div>
                                     <AutoSizingTextarea value={prompt} onChange={(e) => handlePromptChange(index, e.target.value)} rows={8} />
-                                    <button onClick={() => handleOpenSaveModal(prompt)} disabled={!prompt.trim()} className="mt-2 py-2 text-sm bg-blue-600 text-white rounded font-semibold disabled:opacity-50">Save...</button>
+                                    <button onClick={() => handleOpenSaveModal(prompt)} disabled={!prompt.trim()} className="mt-2 py-2 text-sm bg-blue-600 text-white rounded font-semibold">Save...</button>
                                 </div>
                             ))}
                         </div>
@@ -190,8 +176,8 @@ function SandboxContent() {
                             {prompts.length < 4 && <button onClick={addAiVariation} disabled={isLoading} className="px-4 py-2 bg-sky-600 text-white rounded font-semibold flex items-center gap-2"><SparklesIcon className="h-5 w-5" /> AI Variation</button>}
                         </div>
                         <div className="mt-8 border-t pt-6 grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
-                            <AutoSizingTextarea placeholder="Shared Input (use {shared_input})" value={sharedInput} onChange={(e) => setSharedInput(e.target.value)} rows={3} className="w-full border rounded p-2"/>
-                            <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} className="w-full border rounded p-2 bg-gray-100 h-11">
+                            <textarea placeholder="Shared Input (use {shared_input})" value={sharedInput} onChange={(e) => setSharedInput(e.target.value)} rows={3} className="w-full border rounded p-2"/>
+                            <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} className="w-full border rounded p-2 bg-gray-100">
                                 {AVAILABLE_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                             </select>
                         </div>
@@ -200,7 +186,7 @@ function SandboxContent() {
 
                     {results.length > 0 && <div className="mt-10">
                         <h2 className="text-3xl font-bold mb-6 text-center">Test Results</h2>
-                        <div className={`grid grid-cols-1 md:grid-cols-${results.length > 1 ? '2' : '1'} gap-6`}>
+                        <div className={`grid grid-cols-1 md:grid-cols-2 gap-6`}>
                             {results.map((result) => (
                                 <div key={result.prompt_id} className="bg-gray-800 rounded-lg p-5">
                                     <h3 className="text-xl font-semibold mb-3">Result for Variation #{parseInt(result.prompt_id.replace('v', '')) + 1}</h3>
@@ -217,7 +203,7 @@ function SandboxContent() {
             <Modal isOpen={isSaveModalOpen} onClose={() => setIsSaveModalOpen(false)} title="Save New Prompt">
                 <form onSubmit={handleSavePrompt} className="space-y-4">
                     <input type="text" value={newPromptName} onChange={(e) => setNewPromptName(e.target.value)} placeholder="Prompt Name" disabled={isGeneratingDetails} className="w-full p-2 text-black rounded" required />
-                    <textarea value={newPromptDescription} onChange={(e) => setNewPromptDescription(e.target.value)} placeholder="Description" disabled={isGeneratingDetails} className="w-full p-2 text-black rounded" rows={3} required />
+                    <textarea value={newPromptDescription} onChange={(e) => setNewPromptDescription(e.target.value)} placeholder="Task Description" disabled={isGeneratingDetails} className="w-full p-2 text-black rounded" rows={3} required />
                     <div className="flex justify-end gap-3 mt-4">
                         <button type="button" onClick={() => setIsSaveModalOpen(false)} className="px-4 py-2 bg-gray-600 rounded">Cancel</button>
                         <button type="submit" disabled={isSaving || isGeneratingDetails} className="px-4 py-2 bg-blue-600 rounded">{isSaving ? 'Saving...' : 'Save'}</button>
@@ -228,5 +214,5 @@ function SandboxContent() {
     );
 }
 
-const SandboxPage = () => (<Suspense fallback={<div className="bg-gray-900 text-white text-center p-8">Loading Sandbox...</div>}><SandboxContent /></Suspense>);
+const SandboxPage = () => (<Suspense fallback={<div>Loading Sandbox...</div>}><SandboxContent /></Suspense>);
 export default SandboxPage;

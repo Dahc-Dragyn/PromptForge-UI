@@ -5,8 +5,8 @@ import React, { useState, useEffect } from 'react';
 import AiAssistant from './AiAssistant';
 import ManualComposer from './ManualComposer';
 import ComposedPromptDisplay from './ComposedPromptDisplay';
-import SavePromptModal from './SavePromptModal';
-import QuickExecuteModal from './QuickExecuteModal';
+import { SavePromptModal } from './SavePromptModal';
+import QuickExecuteModal from'./QuickExecuteModal';
 
 // --- TYPE DEFINITIONS ---
 export interface Template {
