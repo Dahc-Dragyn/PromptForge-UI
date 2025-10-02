@@ -28,3 +28,36 @@ export interface ActivityItem {
   event_type: 'creation' | 'update' | 'execution';
   timestamp: string;
 }
+
+// --- FIX: Add and export the missing type definitions ---
+export interface BreakdownResponse {
+  components: {
+      type: string;
+      content: string;
+      explanation: string;
+  }[];
+}
+
+export interface DiagnoseResponse {
+  overall_score: number | string;
+  diagnosis: string;
+  key_issues: string[];
+  suggested_prompt: string;
+  criteria: {
+      [key: string]: boolean;
+  };
+}
+
+export interface Prompt {
+  id: string;
+  name: string;
+  task_description: string;
+  initial_prompt_text: string;
+  created_at: string;
+  updated_at: string;
+  latest_version: number;
+  // Add these fields as they are returned by the API
+  average_rating?: number;
+  rating_count?: number;
+  is_archived: boolean; // This is the new field we need for the archive functionality
+}

@@ -1,96 +1,83 @@
 import useSWR, { mutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
-import { Prompt } from '@/types/prompt';
+import { Prompt, PromptVersion } from '@/types/prompt';
 
-// --- Type Definitions for Clarity ---
-interface PromptListData {
-  prompts: Prompt[];
-}
-
-// Frontend components will use this simple shape
 interface CreatePromptData {
   name: string;
   description: string;
   text: string;
 }
 
-// The hook will map to this shape for the backend
-interface CreatePromptPayload {
-  name: string;
-  task_description: string;
-  initial_prompt_text: string;
-}
-
-// --- Fetchers ---
-const listFetcher = (url: string) => apiClient.get<PromptListData>(url);
+const listFetcher = (url: string) => apiClient.get<Prompt[]>(url);
 const singleFetcher = (url: string) => apiClient.get<Prompt>(url);
 
-// =================================================================================
-// --- HOOK DEFINITIONS ---
-// =================================================================================
+export function usePrompts(includeArchived = false) {
+  const endpoint = includeArchived ? '/prompts?include_archived=true' : '/prompts';
+  
+  const { data, error, isLoading, mutate: revalidatePrompts } = useSWR<Prompt[]>(endpoint, listFetcher);
 
-/**
- * Hook for fetching and managing the list of all prompts.
- */
-export function usePrompts() {
-  const endpoint = '/prompts/';
-  const { data, error, isLoading } = useSWR<PromptListData>(endpoint, listFetcher);
+  const revalidateAllLists = () => {
+    mutate('/prompts');
+    mutate('/prompts?include_archived=true');
+  };
 
-  /**
-   * Creates a new prompt.
-   * Maps the simple frontend data structure to the required backend payload.
-   */
   const createPrompt = async (promptData: CreatePromptData) => {
-    // --- THIS IS THE FIX ---
-    // It correctly maps the frontend-friendly names to the backend-required names.
-    const payload: CreatePromptPayload = {
+    const newPrompt = await apiClient.post<Prompt>('/prompts', {
       name: promptData.name,
       task_description: promptData.description,
       initial_prompt_text: promptData.text,
-    };
-    
-    const newPrompt = await apiClient.post<Prompt>(endpoint, payload);
-    
-    // Revalidate the SWR cache for the prompt list to update the UI
-    mutate(endpoint);
-    
+    });
+    revalidateAllLists();
     return newPrompt;
   };
 
-  /**
-   * Updates an existing prompt.
-   */
-  const updatePrompt = async (promptId: string, updateData: Partial<Prompt>) => {
-    const updatedPrompt = await apiClient.patch<Prompt>(`/prompts/${promptId}`, updateData);
-    
-    // Revalidate both the list and the specific prompt detail view
-    mutate(endpoint);
-    mutate(`/prompts/${promptId}`);
-    
-    return updatedPrompt;
+  const deletePrompt = async (promptId: string) => {
+    // Optimistically update for instant UI feedback
+    const optimisticData = (data || []).filter(p => p.id !== promptId);
+    mutate(endpoint, optimisticData, false);
+
+    try {
+      await apiClient.del(`/prompts/${promptId}`);
+      revalidateAllLists();
+    } catch (e) {
+      mutate(endpoint, data, false); // Rollback on error
+      throw e;
+    }
   };
 
-  /**
-   * Deletes a prompt.
-   */
-  const deletePrompt = async (promptId: string) => {
-    await apiClient.del(`/prompts/${promptId}`);
-    mutate(endpoint); // Revalidate the list
+  const archivePrompt = async (promptId: string, isArchived: boolean) => {
+    const currentData = data || [];
+    
+    // --- FIX: Implement Optimistic Update ---
+    // 1. Instantly create the expected new state of the list
+    const optimisticData = currentData.map(p =>
+      p.id === promptId ? { ...p, is_archived: isArchived } : p
+    );
+    // 2. Update the local SWR cache immediately without waiting for the API
+    mutate(endpoint, optimisticData, false);
+
+    try {
+      // 3. Send the actual API request
+      await apiClient.patch<Prompt>(`/prompts/${promptId}`, { is_archived: isArchived });
+      // 4. Trigger a revalidation to get the final state from the server
+      revalidateAllLists();
+    } catch (e) {
+      // 5. If the API call fails, roll back the UI to its original state
+      mutate(endpoint, currentData, false);
+      throw e;
+    }
   };
 
   return {
-    prompts: data?.prompts,
+    prompts: data,
     isLoading,
     isError: error,
     createPrompt,
-    updatePrompt,
     deletePrompt,
+    archivePrompt,
   };
 }
 
-/**
- * Hook for fetching the details of a single prompt.
- */
 export function usePromptDetail(promptId: string | null) {
   const { data, error, isLoading } = useSWR(
     promptId ? `/prompts/${promptId}` : null,

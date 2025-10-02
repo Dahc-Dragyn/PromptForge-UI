@@ -1,260 +1,176 @@
-// src/app/clinic/page.tsx
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
-import DiagnoseResult from '@/components/DiagnoseResult';
+import { useState, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
+import { apiClient } from '@/lib/apiClient';
+import { usePrompts } from '@/hooks/usePrompts';
+import AutoSizingTextarea from '@/components/AutoSizingTextarea';
 import BreakdownResult from '@/components/BreakdownResult';
-import CopyableOutput from '@/components/CopyableOutput';
-import Modal from '@/components/Modal';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import DiagnoseResult from '@/components/DiagnoseResult';
+import { SavePromptModal } from '@/components/SavePromptModal';
+import { ArrowPathIcon, BeakerIcon, DocumentDuplicateIcon } from '@heroicons/react/24/solid';
+import type { BreakdownResponse, DiagnoseResponse } from '@/types/prompt';
 
-const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/prompts`;
+interface ClinicResults {
+    diagnose: DiagnoseResponse | null;
+    breakdown: BreakdownResponse | null;
+}
 
-// Inner component to safely use search params
 function ClinicContent() {
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  const [promptText, setPromptText] = useState('');
-  const [clinicRun, setClinicRun] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [diagnoseData, setDiagnoseData] = useState<any | null>(null);
-  const [breakdownData, setBreakdownData] = useState<any | null>(null);
-
-  // --- NEW: State for the Save Prompt modal ---
-  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
-  const [promptToSave, setPromptToSave] = useState('');
-  const [newPromptName, setNewPromptName] = useState('');
-  const [newPromptDescription, setNewPromptDescription] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isGeneratingDetails, setIsGeneratingDetails] = useState(false);
-
-
-  useEffect(() => {
-    const promptFromUrl = searchParams.get('prompt');
-    if (promptFromUrl) {
-      const decodedPrompt = decodeURIComponent(promptFromUrl);
-      setPromptText(decodedPrompt);
-    }
-  }, [searchParams]);
-
-  const handleRunClinic = async () => {
-    if (!promptText) return;
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const { createPrompt } = usePrompts();
     
-    setLoading(true);
-    setClinicRun(true);
-    setError(null);
-    setDiagnoseData(null);
-    setBreakdownData(null);
-
-    try {
-      const [diagnoseRes, breakdownRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/diagnose`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-          body: JSON.stringify({ prompt_text: promptText }),
-        }),
-        fetch(`${API_BASE_URL}/breakdown`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-          body: JSON.stringify({ prompt_text: promptText }),
-        })
-      ]);
-
-      if (!diagnoseRes.ok || !breakdownRes.ok) {
-        throw new Error('One or more API calls failed.');
-      }
-
-      const diagnoseJson = await diagnoseRes.json();
-      const breakdownJson = await breakdownRes.json();
-
-      setDiagnoseData(diagnoseJson);
-      setBreakdownData(breakdownJson);
-
-    } catch (err: any) {
-      setError(err.message || 'Failed to run clinic analysis.');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const handleOpenSaveModal = async (promptContent: string) => {
-    setPromptToSave(promptContent);
-    setIsSaveModalOpen(true);
-    setNewPromptName('');
-    setNewPromptDescription('');
-    setError(null);
-    setIsGeneratingDetails(true);
-
-    try {
-      const nameMetaPrompt = `Based on the following prompt, generate a short, descriptive, 3-5 word title. Do not use quotes. The prompt is: "${promptContent}"`;
-      const descMetaPrompt = `Based on the following prompt, generate a one-sentence description of the task it performs. The prompt is: "${promptContent}"`;
-
-      const [nameRes, descRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }, body: JSON.stringify({ prompt_text: nameMetaPrompt }) }),
-        fetch(`${API_BASE_URL}/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }, body: JSON.stringify({ prompt_text: descMetaPrompt }) })
-      ]);
-
-      if (!nameRes.ok || !descRes.ok) throw new Error('Failed to generate prompt details.');
-
-      const nameData = await nameRes.json();
-      const descData = await descRes.json();
-
-      setNewPromptName(nameData.generated_text.trim().replace(/"/g, ''));
-      setNewPromptDescription(descData.generated_text.trim());
-
-    } catch (err) {
-      console.error("Failed to generate details:", err);
-      setNewPromptName('');
-      setNewPromptDescription('');
-    } finally {
-      setIsGeneratingDetails(false);
-    }
-  };
-
-  const handleSavePrompt = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setIsSaving(true);
-    setError(null);
-    try {
-      const docRef = await addDoc(collection(db, 'prompts'), {
-        name: newPromptName,
-        task_description: newPromptDescription,
-        userId: user.uid,
-        isArchived: false,
-        created_at: serverTimestamp(),
-      });
-
-      const versionsUrl = `${API_BASE_URL}/${docRef.id}/versions`;
-      const versionResponse = await fetch(versionsUrl, {
-        method: 'POST',
-        headers: { 'ngrok-skip-browser-warning': 'true', 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt_text: promptToSave,
-          commit_message: "Initial version from Clinic suggestion.",
-        }),
-      });
-
-      if (!versionResponse.ok) throw new Error('Failed to save the initial prompt version.');
-      
-      setIsSaveModalOpen(false);
-      router.push('/dashboard');
-
-    } catch (err: any) {
-      setError(`Save failed: ${err.message}`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSendToSandbox = () => {
-    const originalPrompt = encodeURIComponent(promptText);
-    const suggestedPrompt = encodeURIComponent(diagnoseData?.suggested_prompt || '');
+    const [promptForClinic, setPromptForClinic] = useState(decodeURIComponent(searchParams.get('prompt') || ''));
+    const [isLoading, setIsLoading] = useState(false);
+    const [clinicResults, setClinicResults] = useState<ClinicResults>({
+        diagnose: null,
+        breakdown: null,
+    });
     
-    router.push(`/sandbox?prompt=${originalPrompt}&prompt=${suggestedPrompt}`);
-  };
+    // State for the reusable SavePromptModal
+    const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+    const [promptToSave, setPromptToSave] = useState('');
 
-  if (authLoading || !user) {
-    return <div>Loading...</div>;
-  }
+    const handleLoadSuggestion = (suggestedPrompt: string) => {
+        setPromptForClinic(suggestedPrompt);
+        toast.success("✅ Suggested prompt loaded for re-evaluation!");
+    };
+    
+    const handleOpenSaveModal = (promptContent: string) => {
+        setPromptToSave(promptContent);
+        setIsSaveModalOpen(true);
+    };
 
-  return (
-    <>
-    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-8">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-4xl font-bold mb-4 text-center">One-Click Prompt Clinic</h1>
-        <p className="text-gray-400 text-center mb-8">
-          Analyze, diagnose, and get actionable suggestions to improve your prompt in one go.
-        </p>
+    const handlePromptSaved = () => {
+        toast.success("Prompt saved successfully!");
+        setIsSaveModalOpen(false);
+        router.push('/dashboard');
+    };
+    
+    const handleSendToSandbox = (promptA: string, promptB: string) => {
+        const encodedA = encodeURIComponent(promptA);
+        const encodedB = encodeURIComponent(promptB);
+        router.push(`/sandbox?promptA=${encodedA}&promptB=${encodedB}`);
+    };
 
-        <div className="bg-white text-black p-6 sm:p-8 rounded-lg shadow-2xl">
-          <label htmlFor="prompt-input" className="block text-sm font-medium text-gray-700 mb-1">
-            Enter your prompt for analysis
-          </label>
-          <textarea 
-            id="prompt-input"
-            value={promptText}
-            onChange={(e) => setPromptText(e.target.value)}
-            className="w-full border rounded p-3 text-black border-gray-300 font-mono"
-            rows={10}
-            placeholder="Paste your prompt here..."
-          />
-          <button 
-            onClick={handleRunClinic}
-            disabled={loading || !promptText}
-            className="w-full mt-4 py-3 bg-rose-600 text-white rounded hover:bg-rose-700 disabled:opacity-50 font-semibold text-lg"
-          >
-            {loading ? 'Analyzing...' : 'Run Clinic'}
-          </button>
-        </div>
+    const handleRunClinic = async () => {
+        if (!promptForClinic) {
+            toast.error("Please enter a prompt to run the clinic.");
+            return;
+        }
 
-        {error && <p className="mt-6 text-red-400 text-center">{error}</p>}
+        setIsLoading(true);
+        setClinicResults({ diagnose: null, breakdown: null });
+        const toastId = toast.loading("Running clinic analysis...");
 
-        {clinicRun && !loading && (
-          <div className="mt-8">
-            <h2 className="text-3xl font-bold mb-6 text-center">Clinic Results</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-              <div>
-                {diagnoseData && <DiagnoseResult data={diagnoseData} />}
-              </div>
-              <div>
-                {breakdownData && <BreakdownResult data={breakdownData} />}
-              </div>
+        try {
+            const [diagnoseRes, breakdownRes] = await Promise.all([
+                apiClient.post<DiagnoseResponse>('/prompts/diagnose', { prompt_text: promptForClinic }),
+                apiClient.post<BreakdownResponse>('/prompts/breakdown', { prompt_text: promptForClinic })
+            ]);
+
+            setClinicResults({
+                diagnose: diagnoseRes,
+                breakdown: breakdownRes,
+            });
+
+            toast.success("Clinic analysis complete!", { id: toastId });
+        } catch (error: any) {
+            console.error("Clinic run failed:", error);
+            toast.error(error.message || "An unexpected error occurred.", { id: toastId });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <>
+            <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-8">
+                <div className="max-w-7xl mx-auto">
+                    <div className="text-center mb-12">
+                        <BeakerIcon className="h-16 w-16 mx-auto text-purple-400 mb-4" />
+                        <h1 className="text-4xl sm:text-5xl font-extrabold text-white">Prompt Clinic</h1>
+                        <p className="mt-4 text-lg text-gray-300">
+                            Get a comprehensive, side-by-side diagnosis and breakdown of your prompt's quality and structure.
+                        </p>
+                    </div>
+
+                    <div className="bg-gray-800 p-6 rounded-xl shadow-2xl">
+                        <AutoSizingTextarea
+                            value={promptForClinic}
+                            onChange={(e) => setPromptForClinic(e.target.value)}
+                            className="w-full bg-gray-900 border-gray-700 rounded-lg p-4 focus:ring-purple-500 focus:border-purple-500 text-lg"
+                            rows={6}
+                            placeholder="Enter the prompt you want to analyze..."
+                        />
+                        <div className="mt-6 text-center">
+                            <button
+                                onClick={handleRunClinic}
+                                disabled={isLoading || !promptForClinic}
+                                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 bg-purple-600 text-white rounded-lg font-semibold text-lg hover:bg-purple-700 disabled:opacity-50 transition-all duration-200 transform hover:scale-105 disabled:scale-100"
+                            >
+                                {isLoading ? (
+                                    <>
+                                        <ArrowPathIcon className="h-6 w-6 animate-spin" />
+                                        Running...
+                                    </>
+                                ) : "Run Clinic"}
+                            </button>
+                        </div>
+                    </div>
+
+                    {!isLoading && (clinicResults.diagnose || clinicResults.breakdown) && (
+                        <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div className="bg-gray-800 p-6 rounded-xl">
+                                <h2 className="text-2xl font-bold mb-4 text-center text-yellow-300">Diagnosis</h2>
+                                {clinicResults.diagnose && (
+                                    <>
+                                        <DiagnoseResult 
+                                            data={clinicResults.diagnose} 
+                                            onTestImprovement={handleLoadSuggestion}
+                                        />
+                                        <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                                            <button 
+                                                onClick={() => handleOpenSaveModal(clinicResults.diagnose!.suggested_prompt)}
+                                                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-semibold text-sm transition-colors"
+                                            >
+                                                <DocumentDuplicateIcon className="h-5 w-5" />
+                                                Save Improvement...
+                                            </button>
+                                            <button 
+                                                onClick={() => handleSendToSandbox(promptForClinic, clinicResults.diagnose!.suggested_prompt)}
+                                                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-semibold text-sm transition-colors"
+                                            >
+                                                <BeakerIcon className="h-5 w-5" />
+                                                A/B Test in Sandbox
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <div className="bg-gray-800 p-6 rounded-xl">
+                                <h2 className="text-2xl font-bold mb-4 text-center text-blue-300">Breakdown</h2>
+                                {clinicResults.breakdown && <BreakdownResult data={clinicResults.breakdown} />}
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
             
-            {diagnoseData?.suggested_prompt && (
-              <div className="mt-8">
-                <CopyableOutput 
-                  title="Suggested Improvement"
-                  content={diagnoseData.suggested_prompt}
-                  onSave={() => handleOpenSaveModal(diagnoseData.suggested_prompt)}
-                />
-                <button 
-                  onClick={handleSendToSandbox}
-                  className="w-full mt-4 py-3 bg-purple-600 text-white rounded hover:bg-purple-700 font-semibold"
-                >
-                  A/B Test the Fix in Sandbox
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-
-    <Modal isOpen={isSaveModalOpen} onClose={() => setIsSaveModalOpen(false)} title="Save New Prompt">
-        <form onSubmit={handleSavePrompt}>
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="new-prompt-name" className="block text-sm font-medium text-gray-300 mb-1">Prompt Name</label>
-              <input id="new-prompt-name" type="text" value={isGeneratingDetails ? "Generating..." : newPromptName} onChange={(e) => setNewPromptName(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" required disabled={isGeneratingDetails} />
-            </div>
-            <div>
-              <label htmlFor="new-prompt-desc" className="block text-sm font-medium text-gray-300 mb-1">Task Description</label>
-              <textarea id="new-prompt-desc" value={isGeneratingDetails ? "Generating..." : newPromptDescription} onChange={(e) => setNewPromptDescription(e.target.value)} className="w-full border rounded p-2 text-black bg-gray-200" rows={3} required disabled={isGeneratingDetails} />
-            </div>
-            {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
-          </div>
-          <div className="mt-6 flex justify-end gap-4">
-            <button type="button" onClick={() => setIsSaveModalOpen(false)} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">Cancel</button>
-            <button type="submit" disabled={isSaving || isGeneratingDetails} className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50 hover:bg-blue-700">{isSaving ? 'Saving...' : 'Save Prompt'}</button>
-          </div>
-        </form>
-      </Modal>
-    </>
-  );
+            <SavePromptModal
+                isOpen={isSaveModalOpen}
+                onClose={() => setIsSaveModalOpen(false)}
+                promptText={promptToSave}
+                onPromptSaved={handlePromptSaved}
+            />
+        </>
+    );
 }
 
 const ClinicPage = () => (
-    <Suspense fallback={<div>Loading Clinic...</div>}>
+    <Suspense fallback={<div className="text-center p-8 bg-gray-900 text-white">Loading Clinic...</div>}>
         <ClinicContent />
     </Suspense>
 );

@@ -5,54 +5,72 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
-// Context and Hooks
 import { useAuth } from '@/context/AuthContext';
 import { usePrompts } from '@/hooks/usePrompts';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useTopPrompts } from '@/hooks/usePromptMetrics';
 import { useRecentActivity } from '@/hooks/useRecentActivity';
 import { PromptComposerProvider } from '@/context/PromptComposerContext';
+import { apiClient } from '@/lib/apiClient';
+import { PromptVersion } from '@/types/prompt';
 
-// Components
 import Modal from '@/components/Modal';
 import PromptComposer from '@/components/PromptComposer';
 import TemplateForm, { TemplateFormData } from '@/components/TemplateForm';
 import TopPromptsWidget from '@/components/TopPromptsWidget';
 import RecentActivityWidget from '@/components/RecentActivityWidget';
-import InteractiveRating from '@/components/InteractiveRating';
+import SendToLlm from '@/components/SendToLlm';
+import { ArrowPathIcon, ArchiveBoxIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/solid';
 
 const DashboardContent = () => {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
 
     const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState(false);
+    const [showArchived, setShowArchived] = useState(true);
+    const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
     
-    const { prompts, isLoading: promptsLoading, isError: promptsError, deletePrompt } = usePrompts();
+    const { prompts, isLoading: promptsLoading, isError: promptsError, deletePrompt, archivePrompt } = usePrompts(showArchived);
+    
     const { templates, isLoading: templatesLoading, isError: templatesError, createTemplate } = usePromptTemplates();
     const { activities, isLoading: activityLoading, isError: activityError } = useRecentActivity();
     const { topPrompts, isLoading: metricsLoading, isError: metricsError } = useTopPrompts();
 
-    const visiblePrompts = useMemo(() => (prompts ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [prompts]);
     const visibleTemplates = useMemo(() => (templates ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [templates]);
 
-    const handleDeletePrompt = async (promptId: string) => {
-        if (window.confirm('Are you sure you want to delete this prompt? This action cannot be undone.')) {
-            toast.promise(deletePrompt(promptId), {
-                loading: 'Deleting prompt...',
-                success: 'Prompt successfully deleted!',
-                error: (err) => err.message || 'Failed to delete prompt.'
-            });
+    // --- FIX: Updated 'visiblePrompts' to filter based on the 'showArchived' toggle ---
+    const visiblePrompts = useMemo(() => {
+        const sorted = (prompts ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        if (showArchived) {
+            return sorted;
         }
-    };
+        return sorted.filter(p => !p.is_archived);
+    }, [prompts, showArchived]);
 
-    const handleCreateTemplate = async (data: TemplateFormData) => {
-        const promise = createTemplate(data);
-        await toast.promise(promise, {
-            loading: 'Creating template...',
-            success: 'Template created!',
-            error: 'Failed to create template.'
+
+    const handleAction = (actionPromise: Promise<any>, messages: { loading: string; success: string; error: string; }) => {
+        toast.promise(actionPromise, {
+            loading: messages.loading,
+            success: messages.success,
+            error: (err: any) => err.message || messages.error,
         });
-        setIsCreateTemplateModalOpen(false);
+    };
+    
+    const handleCopyText = async (promptId: string) => {
+        setCopiedPromptId(promptId);
+        const toastId = toast.loading('Copying...');
+        try {
+            const versions = await apiClient.get<PromptVersion[]>(`/prompts/${promptId}/versions`);
+            if (!versions || versions.length === 0) {
+                throw new Error("This prompt has no versions to copy.");
+            }
+            await navigator.clipboard.writeText(versions[0].prompt_text);
+            toast.success('Copied to clipboard!', { id: toastId });
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to copy.', { id: toastId });
+        } finally {
+            setTimeout(() => setCopiedPromptId(null), 2000);
+        }
     };
 
     if (authLoading) return <div className="text-center p-8 text-white">Authenticating...</div>;
@@ -83,10 +101,10 @@ const DashboardContent = () => {
                             <button onClick={() => setIsCreateTemplateModalOpen(true)} className="px-3 py-1 text-sm bg-green-600 rounded hover:bg-green-700">+ New</button>
                         </div>
                         <div className="bg-gray-800 p-4 rounded-lg flex-grow overflow-y-auto">
-                            {templatesLoading && <p>Loading templates...</p>}
+                            {templatesLoading && <div className="text-center p-4"><ArrowPathIcon className="h-6 w-6 animate-spin mx-auto text-gray-400" /></div>}
                             {templatesError && <p className="text-red-400">Could not load templates.</p>}
-                            {visibleTemplates.map((template, index) => (
-                                <div key={`template-${template.id}-${index}`} className="p-2 hover:bg-gray-700 rounded">
+                            {visibleTemplates.map((template) => (
+                                <div key={template.id} className="p-2 hover:bg-gray-700 rounded-lg mb-2">
                                       <Link href={`/templates/${template.id}`} className="font-semibold text-blue-400">{template.name}</Link>
                                       <p className="text-sm text-gray-400 truncate">{template.description}</p>
                                 </div>
@@ -95,23 +113,44 @@ const DashboardContent = () => {
                     </div>
 
                     <div className="flex flex-col min-h-0">
-                        <h2 className="text-2xl font-bold mb-4 flex-shrink-0">Your Prompts</h2>
+                        <div className="flex justify-between items-center mb-4 flex-shrink-0">
+                            <h2 className="text-2xl font-bold">Your Prompts</h2>
+                            <label className="flex items-center cursor-pointer">
+                                <span className="mr-3 text-sm text-gray-400">Show Archived</span>
+                                <div className="relative">
+                                    <input type="checkbox" checked={showArchived} onChange={() => setShowArchived(!showArchived)} className="sr-only" />
+                                    <div className="block bg-gray-700 w-14 h-8 rounded-full"></div>
+                                    <div className={`dot absolute left-1 top-1 w-6 h-6 rounded-full transition-transform ${showArchived ? 'translate-x-full bg-green-400' : 'bg-white'}`}></div>
+                                </div>
+                            </label>
+                        </div>
                         <div className="bg-gray-800 p-4 rounded-lg flex-grow overflow-y-auto">
-                            {promptsLoading && <p>Loading prompts...</p>}
+                            {promptsLoading && <div className="text-center p-4"><ArrowPathIcon className="h-6 w-6 animate-spin mx-auto text-gray-400" /></div>}
                             {promptsError && <p className="text-red-400">Could not load prompts.</p>}
-                            {visiblePrompts.map((prompt, index) => (
-                                <div key={`prompt-${prompt.id}-${index}`} className="p-3 hover:bg-gray-700 rounded-lg">
+                            {/* --- FIX: Display logic is now handled by the 'visiblePrompts' memo --- */}
+                            {visiblePrompts.map((prompt) => (
+                                <div key={prompt.id} className={`p-4 bg-gray-700/50 rounded-lg mb-4 transition-opacity ${prompt.is_archived ? 'opacity-50' : ''}`}>
                                     <div className="flex justify-between items-start">
-                                        <Link href={`/prompts/${prompt.id}`} className="font-semibold text-indigo-400 mb-1 block">{prompt.name}</Link>
-                                        <button onClick={() => handleDeletePrompt(prompt.id)} className="text-red-600 hover:text-red-500 text-xs font-semibold">DELETE</button>
+                                        <Link href={`/prompts/${prompt.id}`} className="font-semibold text-indigo-400 mb-1 block hover:underline">{prompt.name}</Link>
+                                        {prompt.is_archived && <span className="text-xs bg-gray-600 text-gray-300 px-2 py-0.5 rounded-full">Archived</span>}
                                     </div>
-                                    <p className="text-sm text-gray-400 line-clamp-2 mb-2">{prompt.description}</p>
-                                    {/* CORRECTED: Pass rating data down as props */}
-                                    <InteractiveRating 
-                                        promptId={prompt.id} 
-                                        averageRating={prompt.average_rating ?? 0}
-                                        ratingCount={prompt.rating_count ?? 0}
-                                    />
+                                    <p className="text-sm text-gray-400 line-clamp-2 mb-3">{prompt.task_description}</p>
+                                    
+                                    <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-4 pt-3 border-t border-gray-700/50">
+                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+                                            <Link href={`/prompts/${prompt.id}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">View</Link>
+                                            
+                                            <button onClick={() => handleCopyText(prompt.id)} className={`px-3 py-1 text-xs text-white rounded transition-colors w-20 ${copiedPromptId === prompt.id ? 'bg-green-600' : 'bg-gray-600 hover:bg-gray-500'}`}>
+                                                {copiedPromptId === prompt.id ? 'Copied!' : 'Copy'}
+                                            </button>
+
+                                            <button onClick={() => handleAction(archivePrompt(prompt.id, !prompt.is_archived), {loading: 'Updating...', success: `Prompt ${prompt.is_archived ? 'restored' : 'archived'}.`, error: 'Failed to update.'})} className="p-1.5 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700" title={prompt.is_archived ? 'Unarchive' : 'Archive'}>
+                                                {prompt.is_archived ? <ArrowUturnLeftIcon className="h-4 w-4" /> : <ArchiveBoxIcon className="h-4 w-4" />}
+                                            </button>
+                                            <button onClick={() => window.confirm('Are you sure?') && handleAction(deletePrompt(prompt.id), {loading: 'Deleting...', success: 'Prompt deleted.', error: 'Failed to delete.'})} className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">Delete</button>
+                                        </div>
+                                        <SendToLlm promptId={prompt.id} />
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -129,7 +168,10 @@ const DashboardContent = () => {
             </div>
 
             <Modal isOpen={isCreateTemplateModalOpen} onClose={() => setIsCreateTemplateModalOpen(false)} title="Create New Template">
-                <TemplateForm onSubmit={handleCreateTemplate} onCancel={() => setIsCreateTemplateModalOpen(false)} />
+                <TemplateForm onSubmit={async (data) => {
+                    await handleAction(createTemplate(data), { loading: 'Creating template...', success: 'Template created!', error: 'Failed to create template.' });
+                    setIsCreateTemplateModalOpen(false);
+                }} onCancel={() => setIsCreateTemplateModalOpen(false)} />
             </Modal>
         </>
     );

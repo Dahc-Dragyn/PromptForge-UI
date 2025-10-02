@@ -31,9 +31,9 @@ interface OptimizeResponse {
 type Example = { input: string; output: string; };
 
 const APE_FOCUS_TYPES = [
-    "General Purpose", 
-    "Chain-of-Thought", 
-    "JSON Output", 
+    "General Purpose",
+    "Chain-of-Thought",
+    "JSON Output",
     "Code Generation (Python)",
     "Constraint-Based",
     "Few-Shot",
@@ -45,7 +45,7 @@ const ExampleItem = ({ example, onRemove }: { example: Example, onRemove: () => 
 
     return (
         <div className="bg-gray-100 rounded">
-            <div 
+            <div
                 className="flex items-center gap-2 p-2 cursor-pointer"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
@@ -98,7 +98,7 @@ function AnalyzeContent() {
     const [outputType, setOutputType] = useState<'diagnose' | 'breakdown' | 'optimize' | null>(null);
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
     const [promptToSave, setPromptToSave] = useState('');
-    
+
     useEffect(() => {
         const promptFromUrl = searchParams.get('prompt') || '';
         const toolFromUrl = searchParams.get('tool');
@@ -106,7 +106,7 @@ function AnalyzeContent() {
 
         setPromptText(decodedPrompt);
         setTaskDescription(decodedPrompt);
-        
+
         if (toolFromUrl === 'optimize') {
             setActiveTool('optimize');
         }
@@ -115,7 +115,7 @@ function AnalyzeContent() {
     const handleApiCall = async (endpoint: 'diagnose' | 'breakdown' | 'optimize') => {
         let payload = {};
         const isOptimize = endpoint === 'optimize';
-        
+
         if (isOptimize) {
             if (!taskDescription) return toast.error("Task description is required for optimization.");
             setIsOptimizing(true);
@@ -145,14 +145,16 @@ function AnalyzeContent() {
         if (!taskDescription) {
             return toast.error("Please provide a task description first.");
         }
-        
+
         const toastId = toast.loading(`Generating a "${exampleFocus}" example...`);
         setIsGeneratingExample(true);
 
+        let metaPrompt = `Based on the task "${taskDescription}", generate a single, high-quality input/output example for the focus "${exampleFocus}". Return your answer as a single raw JSON object with "input" and "output" keys. The "output" key's value should be a single string.`;
+        if (exampleFocus === 'JSON Output') {
+            metaPrompt = `Based on the task "${taskDescription}", generate an example of transforming unstructured text into a structured JSON object. The 'output' key's value must be a single string containing valid JSON. Example: {"input": "Error at file.tsx:68", "output": "{\\"errorType\\": \\"TypeError\\", \\"file\\": \\"file.tsx\\"}"}`;
+        }
+
         try {
-            const metaPrompt = `Based on the task "${taskDescription}", generate a single, high-quality '${exampleFocus}' input/output example. Return your answer as a single raw JSON object with two keys: "input" and "output". Do not wrap it in markdown or any other text.`;
-            
-            // --- FIX: Corrected the expected response type ---
             const response = await apiClient.post<{ final_text: string }>('/prompts/execute', {
                 prompt_text: metaPrompt,
                 model: 'gemini-2.5-flash-lite'
@@ -161,21 +163,26 @@ function AnalyzeContent() {
             const cleanedText = response.final_text.replace(/```json\n|```/g, '').trim();
             const example = JSON.parse(cleanedText);
 
-            if (example && example.input && example.output) {
-                setExamples(prev => [...prev, { input: example.input, output: example.output }]);
-                toast.success("AI Example added!", { id: toastId });
-            } else {
-                throw new Error("AI returned an invalid example format.");
+            if (!example || !example.input || !example.output) {
+                throw new Error("AI returned an invalid example structure.");
             }
+
+            let finalOutput = example.output;
+            if (typeof finalOutput === 'object') {
+                finalOutput = JSON.stringify(finalOutput, null, 2);
+            }
+
+            setExamples(prev => [...prev, { input: example.input, output: finalOutput }]);
+            toast.success("AI Example added!", { id: toastId });
+
         } catch (err: any) {
-            console.error("Failed to parse AI example:", err);
-            toast.error(err.message || "Failed to generate AI example.", { id: toastId });
+            console.error("Failed to generate or parse AI example:", err);
+            toast.error(err.message || "Failed to process AI example.", { id: toastId });
         } finally {
             setIsGeneratingExample(false);
         }
     };
-    
-    // The rest of the handlers and JSX...
+
     const handleToolSwitch = (tool: 'simple' | 'optimize') => {
         setActiveTool(tool);
         setOutput(null);
@@ -189,22 +196,23 @@ function AnalyzeContent() {
             toast.error("Both example input and output are required.");
         }
     };
-    
+
     const handleOpenSaveModal = (promptContent: string) => {
         setPromptToSave(promptContent);
         setIsSaveModalOpen(true);
     };
-    
+
     const handlePromptSaved = () => {
         toast.success("Prompt saved successfully!");
         setIsSaveModalOpen(false);
     };
-    
+
     const handleTestImprovement = (suggestedPrompt: string) => {
         setPromptText(suggestedPrompt);
-        toast.success("Suggested prompt loaded for testing!");
+        // --- THIS IS THE IMPLEMENTATION OF OPTION 1 ---
+        toast.success("✅ Suggested prompt loaded into the analysis box!");
     };
-    
+
     return (
         <>
             <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-8">
@@ -237,7 +245,7 @@ function AnalyzeContent() {
                                         <ExampleItem key={index} example={ex} onRemove={() => setExamples(examples.filter((_, i) => i !== index))} />
                                     ))}
                                     <div className="flex flex-col sm:flex-row gap-4 items-end p-4 bg-gray-50 rounded border">
-                                        <div className="w-full sm:w-1/3">
+                                        <div className="w-full sm:w-auto">
                                             <label className="text-xs font-semibold text-gray-600">Example Focus</label>
                                             <select value={exampleFocus} onChange={e => setExampleFocus(e.target.value)} className="w-full border p-2 rounded h-11 bg-white">
                                                 {APE_FOCUS_TYPES.map(focus => <option key={focus} value={focus}>{focus}</option>)}
@@ -245,16 +253,16 @@ function AnalyzeContent() {
                                         </div>
                                         <div className="flex-1 w-full">
                                             <label className="text-xs font-semibold text-gray-600">Manual Example Input</label>
-                                            <AutoSizingTextarea value={currentExample.input} onChange={e => setCurrentExample({...currentExample, input: e.target.value})} className="w-full border p-1 rounded" rows={2}/>
+                                            <AutoSizingTextarea value={currentExample.input} onChange={e => setCurrentExample({ ...currentExample, input: e.target.value })} className="w-full border p-1 rounded" rows={2} />
                                         </div>
                                         <div className="flex-1 w-full">
                                             <label className="text-xs font-semibold text-gray-600">Manual Example Output</label>
-                                            <AutoSizingTextarea value={currentExample.output} onChange={e => setCurrentExample({...currentExample, output: e.target.value})} className="w-full border p-1 rounded" rows={2}/>
+                                            <AutoSizingTextarea value={currentExample.output} onChange={e => setCurrentExample({ ...currentExample, output: e.target.value })} className="w-full border p-1 rounded" rows={2} />
                                         </div>
                                         <div className="flex gap-2 w-full sm:w-auto">
                                             <button type="button" onClick={handleAddExample} className="px-4 py-2 bg-gray-600 text-white rounded w-full sm:w-auto">Add</button>
-                                            <button type="button" onClick={handleGenerateExample} disabled={isGeneratingExample} className="px-4 py-2 bg-sky-600 text-white rounded flex items-center gap-2 w-full sm:w-auto">
-                                                <SparklesIcon className="h-5 w-5"/> AI
+                                            <button type="button" onClick={handleGenerateExample} disabled={isGeneratingExample} className="px-4 py-2 bg-sky-600 text-white rounded flex items-center justify-center gap-2 w-full sm:w-auto">
+                                                <SparklesIcon className="h-5 w-5" /> AI
                                             </button>
                                         </div>
                                     </div>
@@ -263,7 +271,7 @@ function AnalyzeContent() {
                             </div>
                         )}
                     </div>
-                    
+
                     {output && (
                         <div className="mt-8">
                             {outputType === 'diagnose' && <DiagnoseResult data={output as DiagnoseResponse} onTestImprovement={handleTestImprovement} />}
@@ -279,7 +287,7 @@ function AnalyzeContent() {
                     )}
                 </div>
             </div>
-            
+
             <SavePromptModal
                 isOpen={isSaveModalOpen}
                 onClose={() => setIsSaveModalOpen(false)}
