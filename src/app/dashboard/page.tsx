@@ -16,21 +16,27 @@ import { PromptVersion } from '@/types/prompt';
 
 import Modal from '@/components/Modal';
 import PromptComposer from '@/components/PromptComposer';
-import TemplateForm, { TemplateFormData } from '@/components/TemplateForm';
+import TemplateForm from '@/components/TemplateForm';
 import TopPromptsWidget from '@/components/TopPromptsWidget';
 import RecentActivityWidget from '@/components/RecentActivityWidget';
 import SendToLlm from '@/components/SendToLlm';
-import { ArrowPathIcon, ArchiveBoxIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/solid';
+import StarRating from '@/components/StarRating';
+import { ArrowPathIcon, ArchiveBoxIcon, ArrowUturnLeftIcon, TrashIcon } from '@heroicons/react/24/outline';
+
+type SortOrder = 'newest' | 'oldest' | 'alphabetical';
 
 const DashboardContent = () => {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
 
     const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState(false);
-    const [showArchived, setShowArchived] = useState(true);
+    const [showArchived, setShowArchived] = useState(false);
     const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
+    const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+    // --- NEW STATE: Track prompts rated in this session ---
+    const [ratedInSession, setRatedInSession] = useState<Set<string>>(new Set());
     
-    const { prompts, isLoading: promptsLoading, isError: promptsError, deletePrompt, archivePrompt } = usePrompts(showArchived);
+    const { prompts, isLoading: promptsLoading, isError: promptsError, deletePrompt, archivePrompt, ratePrompt } = usePrompts(true);
     
     const { templates, isLoading: templatesLoading, isError: templatesError, createTemplate } = usePromptTemplates();
     const { activities, isLoading: activityLoading, isError: activityError } = useRecentActivity();
@@ -38,18 +44,23 @@ const DashboardContent = () => {
 
     const visibleTemplates = useMemo(() => (templates ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [templates]);
 
-    // --- FIX: Updated 'visiblePrompts' to filter based on the 'showArchived' toggle ---
     const visiblePrompts = useMemo(() => {
-        const sorted = (prompts ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        if (showArchived) {
-            return sorted;
-        }
+        const baseList = prompts ?? [];
+        const sorted = [...baseList].sort((a, b) => {
+            switch (sortOrder) {
+                case 'oldest': return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+                case 'alphabetical': return a.name.localeCompare(b.name);
+                case 'newest': default: return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            }
+        });
+        if (showArchived) return sorted;
         return sorted.filter(p => !p.is_archived);
-    }, [prompts, showArchived]);
+    }, [prompts, showArchived, sortOrder]);
 
 
     const handleAction = (actionPromise: Promise<any>, messages: { loading: string; success: string; error: string; }) => {
-        toast.promise(actionPromise, {
+        // Return the promise for chaining
+        return toast.promise(actionPromise, {
             loading: messages.loading,
             success: messages.success,
             error: (err: any) => err.message || messages.error,
@@ -61,9 +72,7 @@ const DashboardContent = () => {
         const toastId = toast.loading('Copying...');
         try {
             const versions = await apiClient.get<PromptVersion[]>(`/prompts/${promptId}/versions`);
-            if (!versions || versions.length === 0) {
-                throw new Error("This prompt has no versions to copy.");
-            }
+            if (!versions || versions.length === 0) throw new Error("This prompt has no versions to copy.");
             await navigator.clipboard.writeText(versions[0].prompt_text);
             toast.success('Copied to clipboard!', { id: toastId });
         } catch (err: any) {
@@ -71,6 +80,20 @@ const DashboardContent = () => {
         } finally {
             setTimeout(() => setCopiedPromptId(null), 2000);
         }
+    };
+
+    // --- NEW HANDLER: To manage the rated state ---
+    const handleRate = (promptId: string, versionNumber: number, rating: number) => {
+        handleAction(ratePrompt(promptId, versionNumber, rating), {
+            loading: 'Submitting rating...',
+            success: 'Rating submitted!',
+            error: 'Failed to submit rating.'
+        }).then(() => {
+            // On success, add the promptId to our session set
+            setRatedInSession(prev => new Set(prev).add(promptId));
+        }).catch(() => {
+            // Optional: handle error case if needed, though toast already does
+        });
     };
 
     if (authLoading) return <div className="text-center p-8 text-white">Authenticating...</div>;
@@ -105,51 +128,66 @@ const DashboardContent = () => {
                             {templatesError && <p className="text-red-400">Could not load templates.</p>}
                             {visibleTemplates.map((template) => (
                                 <div key={template.id} className="p-2 hover:bg-gray-700 rounded-lg mb-2">
-                                      <Link href={`/templates/${template.id}`} className="font-semibold text-blue-400">{template.name}</Link>
-                                      <p className="text-sm text-gray-400 truncate">{template.description}</p>
+                                    <Link href={`/templates/${template.id}`} className="font-semibold text-blue-400">{template.name}</Link>
+                                    <p className="text-sm text-gray-400 truncate">{template.description}</p>
                                 </div>
                             ))}
                         </div>
                     </div>
 
                     <div className="flex flex-col min-h-0">
-                        <div className="flex justify-between items-center mb-4 flex-shrink-0">
-                            <h2 className="text-2xl font-bold">Your Prompts</h2>
-                            <label className="flex items-center cursor-pointer">
-                                <span className="mr-3 text-sm text-gray-400">Show Archived</span>
-                                <div className="relative">
-                                    <input type="checkbox" checked={showArchived} onChange={() => setShowArchived(!showArchived)} className="sr-only" />
-                                    <div className="block bg-gray-700 w-14 h-8 rounded-full"></div>
-                                    <div className={`dot absolute left-1 top-1 w-6 h-6 rounded-full transition-transform ${showArchived ? 'translate-x-full bg-green-400' : 'bg-white'}`}></div>
-                                </div>
-                            </label>
+                        <div className="flex justify-between items-center mb-4 flex-shrink-0 gap-4">
+                            <h2 className="text-2xl font-bold whitespace-nowrap">Your Prompts</h2>
+                            <div className="flex items-center gap-4">
+                                <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as SortOrder)} className="bg-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2">
+                                    <option value="newest">Newest</option>
+                                    <option value="oldest">Oldest</option>
+                                    <option value="alphabetical">A-Z</option>
+                                </select>
+                                <label className="flex items-center cursor-pointer">
+                                    <span className="mr-3 text-sm text-gray-400">Archived</span>
+                                    <div className="relative">
+                                        <input type="checkbox" checked={showArchived} onChange={() => setShowArchived(!showArchived)} className="sr-only" />
+                                        <div className={`block w-14 h-8 rounded-full transition-colors ${showArchived ? 'bg-green-500' : 'bg-gray-700'}`}></div>
+                                        <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${showArchived ? 'translate-x-full' : ''}`}></div>
+                                    </div>
+                                </label>
+                            </div>
                         </div>
                         <div className="bg-gray-800 p-4 rounded-lg flex-grow overflow-y-auto">
                             {promptsLoading && <div className="text-center p-4"><ArrowPathIcon className="h-6 w-6 animate-spin mx-auto text-gray-400" /></div>}
                             {promptsError && <p className="text-red-400">Could not load prompts.</p>}
-                            {/* --- FIX: Display logic is now handled by the 'visiblePrompts' memo --- */}
                             {visiblePrompts.map((prompt) => (
-                                <div key={prompt.id} className={`p-4 bg-gray-700/50 rounded-lg mb-4 transition-opacity ${prompt.is_archived ? 'opacity-50' : ''}`}>
+                                <div key={prompt.id} className={`p-4 bg-gray-700/50 rounded-lg mb-4 transition-opacity ${prompt.is_archived && showArchived ? 'opacity-50' : ''}`}>
                                     <div className="flex justify-between items-start">
                                         <Link href={`/prompts/${prompt.id}`} className="font-semibold text-indigo-400 mb-1 block hover:underline">{prompt.name}</Link>
-                                        {prompt.is_archived && <span className="text-xs bg-gray-600 text-gray-300 px-2 py-0.5 rounded-full">Archived</span>}
+                                        {prompt.is_archived && showArchived && <span className="text-xs bg-gray-600 text-gray-300 px-2 py-0.5 rounded-full">Archived</span>}
                                     </div>
                                     <p className="text-sm text-gray-400 line-clamp-2 mb-3">{prompt.task_description}</p>
                                     
-                                    <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-4 pt-3 border-t border-gray-700/50">
-                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-                                            <Link href={`/prompts/${prompt.id}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">View</Link>
-                                            
-                                            <button onClick={() => handleCopyText(prompt.id)} className={`px-3 py-1 text-xs text-white rounded transition-colors w-20 ${copiedPromptId === prompt.id ? 'bg-green-600' : 'bg-gray-600 hover:bg-gray-500'}`}>
-                                                {copiedPromptId === prompt.id ? 'Copied!' : 'Copy'}
-                                            </button>
-
-                                            <button onClick={() => handleAction(archivePrompt(prompt.id, !prompt.is_archived), {loading: 'Updating...', success: `Prompt ${prompt.is_archived ? 'restored' : 'archived'}.`, error: 'Failed to update.'})} className="p-1.5 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700" title={prompt.is_archived ? 'Unarchive' : 'Archive'}>
-                                                {prompt.is_archived ? <ArrowUturnLeftIcon className="h-4 w-4" /> : <ArchiveBoxIcon className="h-4 w-4" />}
-                                            </button>
-                                            <button onClick={() => window.confirm('Are you sure?') && handleAction(deletePrompt(prompt.id), {loading: 'Deleting...', success: 'Prompt deleted.', error: 'Failed to delete.'})} className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">Delete</button>
+                                    <div className="flex items-center justify-between pt-3 border-t border-gray-700/50">
+                                        <div className="flex items-center flex-wrap gap-x-4 gap-y-2">
+                                            <StarRating 
+                                                currentRating={Math.round(prompt.average_rating || 0)}
+                                                disabled={ratedInSession.has(prompt.id)}
+                                                onRatingChange={(rating) => handleRate(prompt.id, prompt.latest_version, rating)}
+                                            />
+                                            <div className="flex items-center gap-x-2">
+                                                <Link href={`/prompts/${prompt.id}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">View</Link>
+                                                <button onClick={() => handleCopyText(prompt.id)} className={`px-3 py-1 text-xs text-white rounded transition-colors w-20 ${copiedPromptId === prompt.id ? 'bg-green-600' : 'bg-gray-600 hover:bg-gray-500'}`}>
+                                                    {copiedPromptId === prompt.id ? 'Copied!' : 'Copy'}
+                                                </button>
+                                                <button onClick={() => handleAction(archivePrompt(prompt.id, !prompt.is_archived), {loading: 'Updating...', success: `Prompt ${prompt.is_archived ? 'restored' : 'archived'}.`, error: 'Failed to update.'})} className="p-1.5 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700" title={prompt.is_archived ? 'Unarchive' : 'Archive'}>
+                                                    {prompt.is_archived ? <ArrowUturnLeftIcon className="h-4 w-4" /> : <ArchiveBoxIcon className="h-4 w-4" />}
+                                                </button>
+                                                <button onClick={() => window.confirm('Are you sure?') && handleAction(deletePrompt(prompt.id), {loading: 'Deleting...', success: 'Prompt deleted.', error: 'Failed to delete.'})} className="p-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700" title="Delete">
+                                                    <TrashIcon className="h-4 w-4" />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <SendToLlm promptId={prompt.id} />
+                                        <div className="flex-shrink-0">
+                                            <SendToLlm promptId={prompt.id} />
+                                        </div>
                                     </div>
                                 </div>
                             ))}

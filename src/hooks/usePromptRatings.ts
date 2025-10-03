@@ -1,59 +1,123 @@
-// src/hooks/usePromptRatings.ts
-import useSWR, { useSWRConfig } from 'swr';
+import useSWR, { mutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
-import { useState } from 'react';
+import { Prompt } from '@/types/prompt';
 
-export interface PromptRatingSummary {
-  prompt_id: string;
-  average_rating: number;
-  rating_count: number;
+interface CreatePromptData {
+  name: string;
+  description: string;
+  text: string;
 }
 
-const fetcher = (url: string) => apiClient.get<PromptRatingSummary>(url);
+const listFetcher = async (url: string): Promise<Prompt[]> => {
+    const response = await apiClient.get<Prompt[]>(url);
+    return response.map(p => ({ ...p, is_archived: p.is_archived ?? false }));
+};
 
-// This hook is ONLY for fetching a single rating summary.
-// We will NOT use this on the dashboard.
-export function usePromptRatingSummary(promptId: string | null) {
-  const key = promptId ? `/metrics/ratings/${promptId}` : null;
-  const { data, error, isLoading } = useSWR<PromptRatingSummary>(key, fetcher);
-  return { data, error, isLoading };
-}
+const singleFetcher = (url: string) => apiClient.get<Prompt>(url);
 
+export function usePrompts(includeArchived = false) {
+  const endpoint = includeArchived ? '/prompts?include_archived=true' : '/prompts';
+  
+  const { data, error, isLoading, mutate: revalidatePrompts } = useSWR<Prompt[]>(endpoint, listFetcher);
 
-// THIS IS THE NEW HOOK FOR OUR COMPONENT TO USE
-// It ONLY contains mutation logic and does NOT fetch data on its own.
-export function usePromptRatingMutations() {
-  const { mutate } = useSWRConfig();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const revalidateAllLists = () => {
+    mutate('/prompts');
+    mutate('/prompts?include_archived=true');
+  };
 
-  const ratePrompt = async (promptId: string, rating: number): Promise<void> => {
-    if (!promptId) throw new Error("A promptId is required to submit a rating.");
-    
-    setIsSubmitting(true);
+  const createPrompt = async (promptData: CreatePromptData) => {
+    const newPrompt = await apiClient.post<Prompt>('/prompts', {
+      name: promptData.name,
+      task_description: promptData.description,
+      initial_prompt_text: promptData.text,
+    });
+    revalidateAllLists();
+    return newPrompt;
+  };
+
+  const deletePrompt = async (promptId: string) => {
+    const optimisticData = (data || []).filter(p => p.id !== promptId);
+    mutate(endpoint, optimisticData, false);
+
     try {
-      await apiClient.post(`/metrics/ratings`, { prompt_id: promptId, rating });
-      // After rating, we revalidate the main prompts list to get the new average
-      mutate('/prompts/');
-    } finally {
-      setIsSubmitting(false);
+      await apiClient.del(`/prompts/${promptId}`);
+      revalidatePrompts(); 
+    } catch(e) {
+      mutate(endpoint, data, false);
+      throw e;
     }
   };
 
-  const removeRating = async (promptId: string): Promise<void> => {
-    if (!promptId) throw new Error("A promptId is required to remove a rating.");
+  const archivePrompt = async (promptId: string, isArchived: boolean) => {
+    const currentData = data || [];
     
-    setIsSubmitting(true);
+    const optimisticData = currentData.map(p =>
+      p.id === promptId ? { ...p, is_archived: isArchived } : p
+    );
+    mutate(endpoint, optimisticData, false);
+
     try {
-      await apiClient.del(`/metrics/ratings/${promptId}`);
-      mutate('/prompts/');
-    } finally {
-      setIsSubmitting(false);
+      await apiClient.patch<Prompt>(`/prompts/${promptId}`, { is_archived: isArchived });
+    } catch (e) {
+      mutate(endpoint, currentData, false);
+      console.error("Failed to archive prompt:", e);
+      throw e;
+    }
+  };
+
+  const ratePrompt = async (promptId: string, versionNumber: number, rating: number) => {
+    const currentData = data || [];
+    const promptToRate = currentData.find(p => p.id === promptId);
+    if (!promptToRate) return;
+
+    // Optimistic UI Update (remains the same)
+    const oldAvgRating = promptToRate.average_rating || 0;
+    const oldRatingCount = promptToRate.rating_count || 0;
+    
+    const newRatingCount = oldRatingCount + 1;
+    const newAvgRating = ((oldAvgRating * oldRatingCount) + rating) / newRatingCount;
+
+    const optimisticData = currentData.map(p =>
+      p.id === promptId
+        ? { ...p, average_rating: newAvgRating, rating_count: newRatingCount }
+        : p
+    );
+    mutate(endpoint, optimisticData, false);
+
+    try {
+      await apiClient.post('/metrics/rate', {
+        prompt_id: promptId,
+        version_number: versionNumber,
+        rating: rating, // <-- THE MISSING FIELD
+      });
+    } catch (e) {
+      // Rollback on error
+      mutate(endpoint, currentData, false);
+      console.error("Failed to submit rating:", e);
+      throw e;
     }
   };
 
   return {
-    isSubmitting,
+    prompts: data,
+    isLoading,
+    isError: error,
+    createPrompt,
+    deletePrompt,
+    archivePrompt,
     ratePrompt,
-    removeRating,
+  };
+}
+
+export function usePromptDetail(promptId: string | null) {
+  const { data, error, isLoading } = useSWR(
+    promptId ? `/prompts/${promptId}` : null,
+    singleFetcher
+  );
+
+  return {
+    prompt: data,
+    isLoading,
+    isError: error,
   };
 }
