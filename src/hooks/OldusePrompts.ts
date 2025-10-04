@@ -1,5 +1,4 @@
-// src/hooks/usePrompts.ts
-import useSWR, { mutate as globalMutate } from 'swr';
+import useSWR, { mutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
 import { Prompt } from '@/types/prompt';
 
@@ -14,22 +13,16 @@ const listFetcher = async (url: string): Promise<Prompt[]> => {
     return response.map(p => ({ ...p, is_archived: p.is_archived ?? false }));
 };
 
-const singleFetcher = (url: string) => {
-  if (url.includes('undefined')) {
-    return Promise.reject(new Error(`Invalid fetch attempt to URL: ${url}`));
-  }
-  return apiClient.get<Prompt>(url);
-};
+const singleFetcher = (url: string) => apiClient.get<Prompt>(url);
 
 export function usePrompts(includeArchived = false) {
   const endpoint = includeArchived ? '/prompts?include_archived=true' : '/prompts';
   
-  const { data, error, isLoading, mutate } = useSWR<Prompt[]>(endpoint, listFetcher);
+  const { data, error, isLoading, mutate: revalidatePrompts } = useSWR<Prompt[]>(endpoint, listFetcher);
 
-  const revalidateAll = () => {
-    globalMutate('/prompts');
-    globalMutate('/prompts?include_archived=true');
-    globalMutate('/metrics/activity/recent');
+  const revalidateAllLists = () => {
+    mutate('/prompts');
+    mutate('/prompts?include_archived=true');
   };
 
   const createPrompt = async (promptData: CreatePromptData) => {
@@ -38,48 +31,49 @@ export function usePrompts(includeArchived = false) {
       task_description: promptData.description,
       initial_prompt_text: promptData.text,
     });
-    // Revalidation is fine here because we WANT to see new items.
-    revalidateAll();
+    revalidateAllLists();
     return newPrompt;
   };
 
   const deletePrompt = async (promptId: string) => {
-    const currentData = data || [];
-    const optimisticData = currentData.filter(p => p.id !== promptId);
-    await mutate(optimisticData, false);
+    const optimisticData = (data || []).filter(p => p.id !== promptId);
+    mutate(endpoint, optimisticData, false);
 
     try {
       await apiClient.del(`/prompts/${promptId}`);
-      // NO revalidation on success to avoid race condition
+      revalidatePrompts(); 
     } catch(e) {
-      await mutate(currentData, false); // Rollback on error
+      mutate(endpoint, data, false);
       throw e;
     }
   };
 
   const archivePrompt = async (promptId: string, isArchived: boolean) => {
     const currentData = data || [];
+    
     const optimisticData = currentData.map(p =>
       p.id === promptId ? { ...p, is_archived: isArchived } : p
     );
-    await mutate(optimisticData, false);
+    mutate(endpoint, optimisticData, false);
 
     try {
       await apiClient.patch<Prompt>(`/prompts/${promptId}`, { is_archived: isArchived });
-      // NO revalidation on success to avoid race condition
     } catch (e) {
-      await mutate(currentData, false); // Rollback on error
+      mutate(endpoint, currentData, false);
+      console.error("Failed to archive prompt:", e);
       throw e;
     }
   };
-  
+
   const ratePrompt = async (promptId: string, versionNumber: number, rating: number) => {
     const currentData = data || [];
     const promptToRate = currentData.find(p => p.id === promptId);
     if (!promptToRate) return;
-    
+
+    // Optimistic UI Update
     const oldAvgRating = promptToRate.average_rating || 0;
     const oldRatingCount = promptToRate.rating_count || 0;
+    
     const newRatingCount = oldRatingCount + 1;
     const newAvgRating = ((oldAvgRating * oldRatingCount) + rating) / newRatingCount;
 
@@ -88,7 +82,7 @@ export function usePrompts(includeArchived = false) {
         ? { ...p, average_rating: newAvgRating, rating_count: newRatingCount }
         : p
     );
-    await mutate(optimisticData, false);
+    mutate(endpoint, optimisticData, false);
 
     try {
       await apiClient.post('/metrics/rate', {
@@ -96,9 +90,12 @@ export function usePrompts(includeArchived = false) {
         version_number: versionNumber,
         rating: rating,
       });
-      // NO revalidation on success to avoid race condition
+      // Revalidate to sync with the server's authoritative state
+      revalidatePrompts();
     } catch (e) {
-      await mutate(currentData, false); // Rollback on error
+      // Rollback on error
+      mutate(endpoint, currentData, false);
+      console.error("Failed to submit rating:", e);
       throw e;
     }
   };
@@ -114,8 +111,7 @@ export function usePrompts(includeArchived = false) {
   };
 }
 
-// Hook for fetching a SINGLE prompt
-export function usePromptDetail(promptId: string | undefined | null) {
+export function usePromptDetail(promptId: string | null) {
   const { data, error, isLoading } = useSWR(
     promptId ? `/prompts/${promptId}` : null,
     singleFetcher

@@ -1,3 +1,4 @@
+// src/app/dashboard/page.tsx
 'use client';
 
 import { useState, Suspense, useMemo } from 'react';
@@ -8,11 +9,10 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { usePrompts } from '@/hooks/usePrompts';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
-import { useTopPrompts } from '@/hooks/usePromptMetrics';
 import { useRecentActivity } from '@/hooks/useRecentActivity';
 import { PromptComposerProvider } from '@/context/PromptComposerContext';
 import { apiClient } from '@/lib/apiClient';
-import { PromptVersion } from '@/types/prompt';
+import { Prompt, PromptVersion } from '@/types/prompt';
 
 import Modal from '@/components/Modal';
 import PromptComposer from '@/components/PromptComposer';
@@ -33,14 +33,12 @@ const DashboardContent = () => {
     const [showArchived, setShowArchived] = useState(false);
     const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
     const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
-    // --- NEW STATE: Track prompts rated in this session ---
     const [ratedInSession, setRatedInSession] = useState<Set<string>>(new Set());
     
-    const { prompts, isLoading: promptsLoading, isError: promptsError, deletePrompt, archivePrompt, ratePrompt } = usePrompts(true);
+    const { prompts, isLoading: promptsLoading, isError: promptsError, deletePrompt, archivePrompt, createPrompt, ratePrompt } = usePrompts(true);
     
     const { templates, isLoading: templatesLoading, isError: templatesError, createTemplate } = usePromptTemplates();
     const { activities, isLoading: activityLoading, isError: activityError } = useRecentActivity();
-    const { topPrompts, isLoading: metricsLoading, isError: metricsError } = useTopPrompts();
 
     const visibleTemplates = useMemo(() => (templates ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [templates]);
 
@@ -53,18 +51,15 @@ const DashboardContent = () => {
                 case 'newest': default: return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
             }
         });
-        if (showArchived) return sorted;
+        if (showArchived) {
+            return sorted;
+        }
         return sorted.filter(p => !p.is_archived);
     }, [prompts, showArchived, sortOrder]);
 
 
     const handleAction = (actionPromise: Promise<any>, messages: { loading: string; success: string; error: string; }) => {
-        // Return the promise for chaining
-        return toast.promise(actionPromise, {
-            loading: messages.loading,
-            success: messages.success,
-            error: (err: any) => err.message || messages.error,
-        });
+        return toast.promise(actionPromise, messages);
     };
     
     const handleCopyText = async (promptId: string) => {
@@ -81,19 +76,33 @@ const DashboardContent = () => {
             setTimeout(() => setCopiedPromptId(null), 2000);
         }
     };
+    
+    const handleArchivePrompt = (promptId: string, isArchived: boolean) => {
+        handleAction(archivePrompt(promptId, isArchived), {
+            loading: 'Updating...',
+            success: `Prompt ${isArchived ? 'archived' : 'restored'}.`,
+            error: 'Failed to update.'
+        });
+    };
 
-    // --- NEW HANDLER: To manage the rated state ---
+    const handleDeletePrompt = (promptId: string) => {
+      if (window.confirm('Are you sure you want to delete this prompt?')) {
+        handleAction(deletePrompt(promptId), {
+            loading: 'Deleting prompt...',
+            success: 'Prompt deleted.',
+            error: 'Failed to delete prompt.'
+        });
+      }
+    };
+
     const handleRate = (promptId: string, versionNumber: number, rating: number) => {
         handleAction(ratePrompt(promptId, versionNumber, rating), {
             loading: 'Submitting rating...',
             success: 'Rating submitted!',
             error: 'Failed to submit rating.'
         }).then(() => {
-            // On success, add the promptId to our session set
             setRatedInSession(prev => new Set(prev).add(promptId));
-        }).catch(() => {
-            // Optional: handle error case if needed, though toast already does
-        });
+        }).catch(() => {});
     };
 
     if (authLoading) return <div className="text-center p-8 text-white">Authenticating...</div>;
@@ -110,9 +119,25 @@ const DashboardContent = () => {
                 <div className="mb-8">
                     <h2 className="text-2xl font-bold mb-4 text-indigo-300">Prompt Hub</h2>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <TopPromptsWidget topPrompts={topPrompts ?? []} loading={metricsLoading} isError={metricsError} />
+                        <TopPromptsWidget 
+                            prompts={prompts ?? []} 
+                            loading={promptsLoading} 
+                            isError={promptsError}
+                            onCopy={handleCopyText}
+                            onArchive={handleArchivePrompt}
+                            copiedPromptId={copiedPromptId}
+                        />
                         <div className="lg:col-span-2">
-                            <RecentActivityWidget activities={activities ?? []} loading={activityLoading} isError={activityError} />
+                            <RecentActivityWidget 
+                                activities={activities ?? []} 
+                                loading={activityLoading} 
+                                isError={activityError}
+                                prompts={prompts ?? []}
+                                onCopy={handleCopyText}
+                                onArchive={handleArchivePrompt}
+                                onDelete={handleDeletePrompt}
+                                copiedPromptId={copiedPromptId}
+                            />
                         </div>
                     </div>
                 </div>
@@ -158,10 +183,9 @@ const DashboardContent = () => {
                             {promptsLoading && <div className="text-center p-4"><ArrowPathIcon className="h-6 w-6 animate-spin mx-auto text-gray-400" /></div>}
                             {promptsError && <p className="text-red-400">Could not load prompts.</p>}
                             {visiblePrompts.map((prompt) => (
-                                <div key={prompt.id} className={`p-4 bg-gray-700/50 rounded-lg mb-4 transition-opacity ${prompt.is_archived && showArchived ? 'opacity-50' : ''}`}>
+                                <div key={prompt.id} className={`p-4 bg-gray-700/50 rounded-lg mb-4`}>
                                     <div className="flex justify-between items-start">
                                         <Link href={`/prompts/${prompt.id}`} className="font-semibold text-indigo-400 mb-1 block hover:underline">{prompt.name}</Link>
-                                        {prompt.is_archived && showArchived && <span className="text-xs bg-gray-600 text-gray-300 px-2 py-0.5 rounded-full">Archived</span>}
                                     </div>
                                     <p className="text-sm text-gray-400 line-clamp-2 mb-3">{prompt.task_description}</p>
                                     
@@ -177,10 +201,10 @@ const DashboardContent = () => {
                                                 <button onClick={() => handleCopyText(prompt.id)} className={`px-3 py-1 text-xs text-white rounded transition-colors w-20 ${copiedPromptId === prompt.id ? 'bg-green-600' : 'bg-gray-600 hover:bg-gray-500'}`}>
                                                     {copiedPromptId === prompt.id ? 'Copied!' : 'Copy'}
                                                 </button>
-                                                <button onClick={() => handleAction(archivePrompt(prompt.id, !prompt.is_archived), {loading: 'Updating...', success: `Prompt ${prompt.is_archived ? 'restored' : 'archived'}.`, error: 'Failed to update.'})} className="p-1.5 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700" title={prompt.is_archived ? 'Unarchive' : 'Archive'}>
+                                                <button onClick={() => handleArchivePrompt(prompt.id, !prompt.is_archived)} className="p-1.5 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700" title={prompt.is_archived ? 'Unarchive' : 'Archive'}>
                                                     {prompt.is_archived ? <ArrowUturnLeftIcon className="h-4 w-4" /> : <ArchiveBoxIcon className="h-4 w-4" />}
                                                 </button>
-                                                <button onClick={() => window.confirm('Are you sure?') && handleAction(deletePrompt(prompt.id), {loading: 'Deleting...', success: 'Prompt deleted.', error: 'Failed to delete.'})} className="p-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700" title="Delete">
+                                                <button onClick={() => handleDeletePrompt(prompt.id)} className="p-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700" title="Delete">
                                                     <TrashIcon className="h-4 w-4" />
                                                 </button>
                                             </div>
