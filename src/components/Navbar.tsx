@@ -75,7 +75,7 @@ const Navbar = () => {
             <form onSubmit={handleSearchSubmit} className="relative">
                 <input
                     type="search"
-                    placeholder="Search prompts & templates..."
+                    placeholder="Search prompts"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="py-1.5 pl-3 pr-8 text-sm rounded-md bg-gray-700 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"

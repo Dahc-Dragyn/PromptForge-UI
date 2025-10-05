@@ -10,7 +10,7 @@ import {
   ArrowPathIcon, 
   ArchiveBoxIcon, 
   ArrowUturnLeftIcon 
-} from '@heroicons/react/24/solid';
+} from '@heroicons/react/24/outline';
 
 interface TopPromptsWidgetProps {
   prompts: Prompt[];

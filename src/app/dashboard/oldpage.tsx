@@ -10,10 +10,10 @@ import { useAuth } from '@/context/AuthContext';
 import { usePrompts } from '@/hooks/usePrompts';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useRecentActivity } from '@/hooks/useRecentActivity';
-import { PromptComposerProvider } from '@/context/PromptComposerContext';
+import { PromptComposerProvider, usePromptComposer } from '@/context/PromptComposerContext';
 import { apiClient } from '@/lib/apiClient';
-// --- FIX: The incorrect 'Template' import is now removed ---
-import { PromptTemplate } from '@/types/template'; 
+// --- FIX: Import 'PromptTemplate' from the correct file ---
+import { PromptTemplate } from '@/types/template';
 import { Prompt, PromptVersion } from '@/types/prompt';
 
 import Modal from '@/components/Modal';
@@ -25,14 +25,26 @@ import SendToLlm from '@/components/SendToLlm';
 import StarRating from '@/components/StarRating';
 import { 
     ArrowPathIcon, ArchiveBoxIcon, ArrowUturnLeftIcon, TrashIcon, 
-    DocumentDuplicateIcon, PencilIcon 
+    DocumentDuplicateIcon, PencilIcon, PaperAirplaneIcon
 } from '@heroicons/react/24/outline';
 
 type SortOrder = 'newest' | 'oldest' | 'alphabetical';
 
+// A wrapper is needed so that DashboardContent can use the PromptComposerContext
+const DashboardPage = () => (
+    <Suspense fallback={<div className="text-center p-8 bg-gray-900 text-white min-h-screen">Loading Dashboard...</div>}>
+        <PromptComposerProvider>
+            <DashboardContent />
+        </PromptComposerProvider>
+    </Suspense>
+);
+
 const DashboardContent = () => {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
+    // The "Send to Composer" feature was incorrect, but we still need the context to implement it correctly later if desired.
+    // For now, we will implement the "Send to LLM" feature as requested.
+    const { setComposedText } = usePromptComposer();
 
     const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState(false);
     const [showArchived, setShowArchived] = useState(false);
@@ -62,8 +74,7 @@ const DashboardContent = () => {
         return showArchived ? sorted : sorted.filter(p => !p.is_archived);
     }, [prompts, showArchived, sortOrder]);
 
-
-    const handleAction = (actionPromise: Promise<unknown>, messages: { loading: string; success: string; error: string; }) => {
+    const handleAction = (actionPromise: Promise<any>, messages: { loading: string; success: string; error: string; }) => {
         return toast.promise(actionPromise, messages);
     };
     
@@ -75,9 +86,8 @@ const DashboardContent = () => {
             if (!versions || versions.length === 0) throw new Error("This prompt has no versions to copy.");
             await navigator.clipboard.writeText(versions[0].prompt_text);
             toast.success('Copied to clipboard!', { id: toastId });
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'Failed to copy.';
-            toast.error(message, { id: toastId });
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to copy.', { id: toastId });
         } finally {
             setTimeout(() => setCopiedPromptId(null), 2000);
         }
@@ -178,6 +188,7 @@ const DashboardContent = () => {
                         </div>
                     </div>
 
+                    {/* --- FIX: "YOUR PROMPTS" SECTION IS NOW RESTORED --- */}
                     <div className="flex flex-col min-h-0">
                         <div className="flex justify-between items-center mb-4 flex-shrink-0 gap-4">
                             <h2 className="text-2xl font-bold whitespace-nowrap">Your Prompts</h2>
@@ -228,9 +239,7 @@ const DashboardContent = () => {
                     <div className="flex flex-col lg:col-span-2 2xl:col-span-1">
                         <h2 className="text-2xl font-bold mb-4">Compose a Prompt</h2>
                         <div className="flex-grow">
-                           <PromptComposerProvider>
-                                <PromptComposer templates={templates ?? []} />
-                           </PromptComposerProvider>
+                            <PromptComposer templates={templates ?? []} />
                         </div>
                     </div>
                 </div>
@@ -245,11 +254,5 @@ const DashboardContent = () => {
         </>
     );
 };
-
-const DashboardPage = () => (
-    <Suspense fallback={<div className="text-center p-8 bg-gray-900 text-white min-h-screen">Loading Dashboard...</div>}>
-        <DashboardContent />
-    </Suspense>
-);
 
 export default DashboardPage;
