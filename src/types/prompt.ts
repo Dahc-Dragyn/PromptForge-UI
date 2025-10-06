@@ -6,7 +6,7 @@ export interface Prompt {
   is_archived: boolean;
   created_at: string;
   updated_at: string;
-  latest_version: number;
+  latest_version_number?: number; // Renamed from latest_version to match API response
   // Aggregate fields from the API
   average_rating?: number;
   rating_count?: number;
@@ -19,10 +19,10 @@ export interface PromptVersion {
   version_number: number;
   prompt_text: string;
   created_at: string;
+  commit_message?: string; // Added to fix error on prompt detail page
 }
 
 // This type is used by the recent activity widget.
-// It now correctly includes the 'action' property.
 export interface ActivityItem {
   id: string;
   prompt_id: string;

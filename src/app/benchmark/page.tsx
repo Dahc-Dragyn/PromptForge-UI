@@ -7,9 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
 import { apiClient } from '@/lib/apiClient';
 
-const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
-
-// FIX: Correct the list of available models to match the backend configuration
+// Per our strategy, we default to the most cost-effective, modern models.
 const AVAILABLE_MODELS = [
   { id: 'gemini-2.5-flash-lite', name: 'Google Gemini 2.5 Flash-Lite' },
   { id: 'gpt-4o-mini', name: 'OpenAI GPT-4o Mini' },
@@ -23,6 +21,10 @@ interface BenchmarkResult {
   output_token_count: number;
   cost: number;
   error?: string;
+}
+
+interface BenchmarkResponse {
+    results: BenchmarkResult[];
 }
 
 function BenchmarkContent() {
@@ -71,26 +73,18 @@ function BenchmarkContent() {
     setLoading(true);
 
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/prompts/benchmark`, {
-        method: 'POST',
-        body: JSON.stringify({
-          prompt_text: promptText,
-          models: selectedModels,
-        }),
+      const response = await apiClient.post<BenchmarkResponse>('/prompts/benchmark', {
+        prompt_text: promptText,
+        models: selectedModels,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || `API returned status: ${response.status}`);
-      }
-
-      setResults(data.results as BenchmarkResult[]);
-      toast.success(`Benchmark completed for ${data.results.length} model(s).`);
+      setResults(response.results);
+      toast.success(`Benchmark completed for ${response.results.length} model(s).`);
     } catch (err: any) {
       console.error('API call failed:', err);
-      setError(err.message || 'Failed to run benchmark. Please check the API connection.');
-      toast.error(err.message || 'Failed to run benchmark.');
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to run benchmark. Please check the API connection.';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -193,7 +187,7 @@ function BenchmarkContent() {
 }
 
 const BenchmarkPageWrapper = () => (
-    <Suspense fallback={<div className="text-center p-8">Loading Benchmark...</div>}>
+    <Suspense fallback={<div className="text-center p-8 bg-gray-900 text-white min-h-screen">Loading Benchmark...</div>}>
         <BenchmarkContent />
     </Suspense>
 );

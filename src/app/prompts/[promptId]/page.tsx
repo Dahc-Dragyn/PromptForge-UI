@@ -85,14 +85,14 @@ function PromptDetailContent() {
 
                             {isEditingDescription ? (
                                 <textarea
-                                    defaultValue={prompt.description}
+                                    defaultValue={prompt.task_description}
                                     className="bg-gray-900 border border-gray-600 rounded-md text-gray-300 mt-2 p-2 w-full"
                                     autoFocus
                                     onBlur={(e) => handleUpdatePrompt({ description: e.target.value })}
                                 />
                             ) : (
                                 <div className="flex items-center gap-3 mt-2">
-                                    <p className="text-gray-400">{prompt.description}</p>
+                                    <p className="text-gray-400">{prompt.task_description}</p>
                                     <button onClick={() => setIsEditingDescription(true)} className="text-gray-400 hover:text-white"><PencilSquareIcon className="h-5 w-5" /></button>
                                 </div>
                             )}

@@ -12,7 +12,6 @@ import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useRecentActivity } from '@/hooks/useRecentActivity';
 import { PromptComposerProvider } from '@/context/PromptComposerContext';
 import { apiClient } from '@/lib/apiClient';
-// --- FIX: The incorrect 'Template' import is now removed ---
 import { PromptTemplate } from '@/types/template'; 
 import { Prompt, PromptVersion } from '@/types/prompt';
 
@@ -73,7 +72,10 @@ const DashboardContent = () => {
         try {
             const versions = await apiClient.get<PromptVersion[]>(`/prompts/${promptId}/versions`);
             if (!versions || versions.length === 0) throw new Error("This prompt has no versions to copy.");
-            await navigator.clipboard.writeText(versions[0].prompt_text);
+            
+            const latestVersion = versions.sort((a, b) => b.version_number - a.version_number)[0];
+            await navigator.clipboard.writeText(latestVersion.prompt_text);
+            
             toast.success('Copied to clipboard!', { id: toastId });
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to copy.';
@@ -208,7 +210,11 @@ const DashboardContent = () => {
                                     <p className="text-sm text-gray-400 line-clamp-2 mb-3">{prompt.task_description}</p>
                                     <div className="flex items-center justify-between pt-3 border-t border-gray-700/50">
                                         <div className="flex items-center flex-wrap gap-x-4 gap-y-2">
-                                            <StarRating currentRating={Math.round(prompt.average_rating || 0)} disabled={ratedInSession.has(prompt.id)} onRatingChange={(rating) => handleRate(prompt.id, prompt.latest_version, rating)} />
+                                            <StarRating 
+                                                currentRating={Math.round(prompt.average_rating || 0)} 
+                                                disabled={ratedInSession.has(prompt.id)} 
+                                                onRatingChange={(rating) => handleRate(prompt.id, prompt.latest_version_number ?? 1, rating)} 
+                                            />
                                             <div className="flex items-center gap-x-2">
                                                 <Link href={`/prompts/${prompt.id}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">View</Link>
                                                 <button onClick={() => handleCopyText(prompt.id)} className={`px-3 py-1 text-xs text-white rounded transition-colors w-20 ${copiedPromptId === prompt.id ? 'bg-green-600' : 'bg-gray-600 hover:bg-gray-500'}`}>{copiedPromptId === prompt.id ? 'Copied!' : 'Copy'}</button>
