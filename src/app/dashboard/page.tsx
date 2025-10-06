@@ -1,7 +1,7 @@
 // src/app/dashboard/page.tsx
 'use client';
 
-import { useState, Suspense, useMemo } from 'react';
+import { useState, Suspense, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -43,6 +43,13 @@ const DashboardContent = () => {
     const { prompts, isLoading: promptsLoading, isError: promptsError, deletePrompt, archivePrompt, ratePrompt } = usePrompts(true);
     const { templates, isLoading: templatesLoading, isError: templatesError, createTemplate, deleteTemplate, archiveTemplate, copyTemplate } = usePromptTemplates(true);
     const { activities, isLoading: activityLoading, isError: activityError } = useRecentActivity();
+
+    // FIX: Redirect logic is now inside a useEffect hook
+    useEffect(() => {
+        if (!authLoading && !user) {
+            router.push('/login');
+        }
+    }, [user, authLoading, router]);
 
     const visibleTemplates = useMemo(() => {
         const sorted = (templates ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -120,8 +127,9 @@ const DashboardContent = () => {
           .catch(() => {});
     };
 
-    if (authLoading) return <div className="text-center p-8 text-white">Authenticating...</div>;
-    if (!user) { router.push('/login'); return null; }
+    if (authLoading || !user) {
+        return <div className="text-center p-8 text-white">Authenticating...</div>;
+    }
 
     return (
         <>
