@@ -1,25 +1,24 @@
-// src/context/AuthContext.tsx
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { 
-  onAuthStateChanged, 
-  User as FirebaseUser, 
-  signOut, 
-  signInWithRedirect, // Import signInWithRedirect
-  GoogleAuthProvider 
+import {
+  onAuthStateChanged,
+  User as FirebaseUser,
+  signOut,
+  signInWithCredential, // <-- 1. Import signInWithCredential
+  GoogleAuthProvider
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { mutate as globalMutate } from 'swr';
+import { useRouter } from 'next/navigation';
 
-interface User extends FirebaseUser {
-  // We can add custom properties here in the future
-}
+interface User extends FirebaseUser {}
 
+// 2. Update the context type for our new function
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: () => Promise<void>;
+  signInWithGoogleCredential: (token: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -28,40 +27,41 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser as User | null);
+      setUser(firebaseUser as FirebaseUser | null);
       setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  const login = async () => {
-    const provider = new GoogleAuthProvider();
+  // 3. Create the new signIn function that uses the token
+  const signInWithGoogleCredential = async (token: string) => {
+    const credential = GoogleAuthProvider.credential(token);
     try {
-      // Switch from signInWithPopup to signInWithRedirect
-      await signInWithRedirect(auth, provider);
-    } catch (error) {
-      console.error("Login failed:", error);
+      // This is a direct API call that is not blocked by browser policies
+      await signInWithCredential(auth, credential);
+    } catch (error: any) {
+      console.error("Firebase credential sign-in failed:", error);
     }
   };
 
   const logout = async () => {
     try {
       await signOut(auth);
-      // This cache clearing is still good practice.
-      await globalMutate((key) => typeof key === 'string' && key.startsWith('/prompts'), undefined, { revalidate: false });
-      await globalMutate((key) => typeof key === 'string' && key.startsWith('/templates'), undefined, { revalidate: false });
-      await globalMutate((key) => typeof key === 'string' && key.startsWith('/metrics'), undefined, { revalidate: false });
+      await globalMutate(() => true, undefined, { revalidate: false });
       setUser(null);
+      router.push('/login');
     } catch (error) {
       console.error("Logout failed:", error);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    // 4. Provide the new function through the context
+    <AuthContext.Provider value={{ user, loading, signInWithGoogleCredential, logout }}>
       {children}
     </AuthContext.Provider>
   );

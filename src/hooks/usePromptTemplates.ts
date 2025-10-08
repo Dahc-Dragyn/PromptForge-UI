@@ -1,69 +1,79 @@
-// src/hooks/usePromptTemplates.ts
 import useSWR, { mutate as globalMutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
-import { Template } from '@/types/template';
+import { PromptTemplate } from '@/types/template'; // <-- FIX: Changed Template to PromptTemplate
+import { useAuth } from '@/context/AuthContext';
 
 // Helper types for creating/updating
-type CreateTemplateData = Omit<Template, 'id' | 'created_at' | 'updated_at' | 'is_archived'>;
+type CreateTemplateData = Omit<PromptTemplate, 'id' | 'created_at' | 'updated_at' | 'is_archived' | 'user_id' | 'version'>;
 type UpdateTemplateData = Partial<CreateTemplateData>;
 
-const listFetcher = async (url: string): Promise<Template[]> => {
-    const response = await apiClient.get<Template[]>(url);
+const listFetcher = async (url: string): Promise<PromptTemplate[]> => {
+    const { data } = await apiClient.get<PromptTemplate[]>(url);
     // Ensure is_archived is always a boolean for consistent filtering
-    return response.map(t => ({ ...t, is_archived: t.is_archived ?? false }));
+    return data.map(t => ({ ...t, is_archived: t.is_archived ?? false }));
 };
 
-const singleFetcher = (url: string) => apiClient.get<Template>(url);
+const singleFetcher = async (url: string): Promise<PromptTemplate> => {
+    const { data } = await apiClient.get<PromptTemplate>(url);
+    return data;
+};
 
 export function usePromptTemplates(includeArchived = false) {
+  const { user } = useAuth();
+  const userId = user?.uid;
+
   const endpoint = includeArchived ? '/templates?include_archived=true' : '/templates';
-  const { data, error, isLoading } = useSWR<Template[]>(endpoint, listFetcher);
+  const key = userId ? [endpoint, userId] : null;
+
+  const { data, error, isLoading } = useSWR<PromptTemplate[]>(key, () => listFetcher(endpoint));
 
   const revalidateLists = () => {
-    globalMutate('/templates');
-    globalMutate('/templates?include_archived=true');
+    if (!userId) return;
+    globalMutate([`/templates`, userId]);
+    globalMutate([`/templates?include_archived=true`, userId]);
   };
 
-  const createTemplate = async (templateData: CreateTemplateData): Promise<Template> => {
-    // For creation, a simple revalidation is often best.
-    const newTemplate = await apiClient.post<Template>('/templates', templateData);
+  const createTemplate = async (templateData: CreateTemplateData): Promise<PromptTemplate> => {
+    if (!userId) throw new Error("User must be logged in to create a template.");
+    const { data: newTemplate } = await apiClient.post<PromptTemplate>('/templates', templateData);
     revalidateLists();
     return newTemplate;
   };
   
   const updateTemplate = async (templateId: string, updateData: UpdateTemplateData): Promise<void> => {
-    const apiCall = apiClient.patch<Template>(`/templates/${templateId}`, updateData);
-    const updater = (currentData: Template[] = []) => 
+    if (!userId) return;
+    const apiCall = apiClient.patch<PromptTemplate>(`/templates/${templateId}`, updateData);
+    const updater = (currentData: PromptTemplate[] = []) => 
       currentData.map(t => t.id === templateId ? { ...t, ...updateData } : t);
 
-    // Optimistically update all relevant caches
-    await globalMutate('/templates', updater, { revalidate: false });
-    await globalMutate('/templates?include_archived=true', updater, { revalidate: false });
-    await globalMutate(`/templates/${templateId}`, (current: Template) => ({ ...current, ...updateData }), { revalidate: false });
+    await globalMutate([`/templates`, userId], updater, { revalidate: false });
+    await globalMutate([`/templates?include_archived=true`, userId], updater, { revalidate: false });
+    await globalMutate([`/templates/${templateId}`, userId], (current?: PromptTemplate) => ({ ...current!, ...updateData }), { revalidate: false });
 
     try {
         await apiCall;
-        revalidateLists(); // Revalidate for consistency after success
+        revalidateLists();
     } catch(e) {
-        revalidateLists(); // Rollback on error by re-fetching
+        revalidateLists();
         throw e;
     }
   };
 
   const deleteTemplate = async (templateId: string): Promise<void> => {
-    const allKey = '/templates?include_archived=true';
-    const activeKey = '/templates';
+    if (!userId) return;
+    const allKey: [string, string] = ['/templates?include_archived=true', userId];
+    const activeKey: [string, string] = ['/templates', userId];
 
     const originalAll = await globalMutate(allKey);
     const originalActive = await globalMutate(activeKey);
     
-    const optimisticFilter = (d: Template[] = []) => d.filter(t => t.id !== templateId);
+    const optimisticFilter = (d: PromptTemplate[] = []) => d.filter(t => t.id !== templateId);
     
     globalMutate(allKey, optimisticFilter, false);
     globalMutate(activeKey, optimisticFilter, false);
 
     try {
-      await apiClient.del(`/templates/${templateId}`);
+      await apiClient.delete(`/templates/${templateId}`);
     } catch(e) {
       globalMutate(allKey, originalAll, false);
       globalMutate(activeKey, originalActive, false);
@@ -72,10 +82,11 @@ export function usePromptTemplates(includeArchived = false) {
   };
 
   const archiveTemplate = async (templateId: string, isArchived: boolean): Promise<void> => {
-    const allKey = '/templates?include_archived=true';
-    const activeKey = '/templates';
+    if (!userId) return;
+    const allKey: [string, string] = ['/templates?include_archived=true', userId];
+    const activeKey: [string, string] = ['/templates', userId];
 
-    const originalAll = await globalMutate(allKey) as Template[] | undefined;
+    const originalAll = await globalMutate(allKey) as PromptTemplate[] | undefined;
     
     const optimisticAllData = (originalAll || []).map(t =>
         t.id === templateId ? { ...t, is_archived: isArchived } : t
@@ -88,7 +99,6 @@ export function usePromptTemplates(includeArchived = false) {
     try {
         await apiClient.patch(`/templates/${templateId}`, { is_archived: isArchived });
     } catch (e) {
-        // Rollback using original data
         const originalActive = (originalAll || []).filter(t => !t.is_archived);
         globalMutate(allKey, originalAll, false);
         globalMutate(activeKey, originalActive, false);
@@ -96,7 +106,8 @@ export function usePromptTemplates(includeArchived = false) {
     }
   };
 
-  const copyTemplate = async (templateId: string): Promise<Template> => {
+  const copyTemplate = async (templateId: string): Promise<PromptTemplate> => {
+    if (!userId) throw new Error("User must be logged in to copy a template.");
     const templateToCopy = data?.find(t => t.id === templateId);
     if (!templateToCopy) {
       throw new Error('Template not found to copy.');
@@ -112,7 +123,7 @@ export function usePromptTemplates(includeArchived = false) {
 
   return {
     templates: data,
-    isLoading,
+    isLoading: !error && !data && !!userId,
     isError: error,
     createTemplate,
     updateTemplate,
@@ -123,9 +134,14 @@ export function usePromptTemplates(includeArchived = false) {
 }
 
 export function useTemplateDetail(templateId: string | null) {
+    const { user } = useAuth();
+    const userId = user?.uid;
+    
+    const key = templateId && userId ? [`/templates/${templateId}`, userId] : null;
+    
     const { data, error, isLoading } = useSWR(
-        templateId ? `/templates/${templateId}` : null,
-        singleFetcher
+        key,
+        () => singleFetcher(`/templates/${templateId}`)
     );
 
     return {

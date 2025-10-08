@@ -1,9 +1,8 @@
-// src/hooks/usePromptMetrics.ts
 import useSWR from 'swr';
 import { apiClient } from '@/lib/apiClient';
+import { useAuth } from '@/context/AuthContext'; // 1. Import useAuth
 
-// CORRECTED: Interface properties now use snake_case to match the API response.
-// Renamed to PromptMetric for clarity.
+// Interface properties are correctly using snake_case
 export interface PromptMetric {
   id: string;
   name: string;
@@ -11,14 +10,26 @@ export interface PromptMetric {
   execution_count: number;
 }
 
-const fetcher = (url: string) => apiClient.get<PromptMetric[]>(url);
+// 2. FIX FETCHER to correctly handle the Axios response
+const fetcher = async (url: string): Promise<PromptMetric[]> => {
+    const { data } = await apiClient.get<PromptMetric[]>(url);
+    return data;
+};
 
 export function useTopPrompts() {
-  const { data, error, isLoading } = useSWR('/metrics/prompts/all', fetcher);
+  const { user } = useAuth(); // 3. Get the authenticated user
+  const userId = user?.uid;
+
+  const endpoint = '/metrics/prompts/all';
+  
+  // 4. Create the user-specific key for SWR
+  const key = userId ? [endpoint, userId] : null;
+
+  const { data, error, isLoading } = useSWR<PromptMetric[]>(key, () => fetcher(endpoint));
 
   return {
     topPrompts: data,
-    isLoading,
+    isLoading: !error && !data && !!userId, // Correct loading state
     isError: error,
   };
 }

@@ -1,9 +1,9 @@
-// src/hooks/useRecentActivity.ts
 import useSWR from 'swr';
 import { apiClient } from '@/lib/apiClient';
 import { ActivityItem } from '@/types/prompt';
+import { useAuth } from '@/context/AuthContext'; // 1. Import useAuth
 
-// This interface describes the actual, mismatched data from the API
+// This interface describes the raw, mismatched data from the API
 interface RawActivityFromApi {
   id: string;
   promptId: string;
@@ -13,30 +13,37 @@ interface RawActivityFromApi {
 }
 
 const fetcher = async (url: string): Promise<ActivityItem[]> => {
-  // 1. Fetch the raw data, which we know has the wrong shape.
-  const response = await apiClient.get<RawActivityFromApi[]>(url);
+  // 2. FIX: Destructure 'data' from the apiClient response to get the actual array
+  const { data: responseData } = await apiClient.get<RawActivityFromApi[]>(url);
 
-  // 2. If there's no data, return an empty array to prevent errors.
-  if (!Array.isArray(response)) {
+  if (!Array.isArray(responseData)) {
     return [];
   }
 
-  // 3. Transform each incorrect item into the correct ActivityItem shape.
-  return response.map(item => ({
-    id: item.id || `${item.promptId}-${item.version}`, // Ensure a unique ID
-    prompt_id: item.promptId,                         // Map camelCase to snake_case
-    prompt_name: item.promptName,                     // Map camelCase to snake_case
-    action: item.version === 1 ? 'CREATED' : 'UPDATED', // Infer the 'action'
-    timestamp: item.created_at,                       // Map 'created_at' to 'timestamp'
+  // Transform each item into the correct ActivityItem shape that the frontend expects
+  return responseData.map(item => ({
+    id: item.id || `${item.promptId}-${item.version}`,
+    prompt_id: item.promptId,
+    prompt_name: item.promptName,
+    action: item.version === 1 ? 'CREATED' : 'UPDATED',
+    timestamp: item.created_at,
   }));
 };
 
 export function useRecentActivity() {
-  const { data, error, isLoading } = useSWR<ActivityItem[]>('/metrics/activity/recent', fetcher);
+  const { user } = useAuth(); // 3. Get the current user
+  const userId = user?.uid;
+
+  const endpoint = '/metrics/activity/recent';
+  
+  // 4. Create a user-specific key. SWR will not fetch if there is no user.
+  const key = userId ? [endpoint, userId] : null;
+
+  const { data, error, isLoading } = useSWR<ActivityItem[]>(key, () => fetcher(endpoint));
 
   return {
     activities: data,
-    isLoading,
+    isLoading: !error && !data && !!userId, // Loading is true only if there's a user
     isError: error,
   };
 }

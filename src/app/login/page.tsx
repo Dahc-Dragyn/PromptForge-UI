@@ -1,101 +1,77 @@
-// src/app/login/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { 
-  signInWithEmailAndPassword, 
-  signInWithPopup, 
-  GoogleAuthProvider 
-} from 'firebase/auth';
-import { auth } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
-const provider = new GoogleAuthProvider();
+// This tells TypeScript that the 'google' object will be available on the window
+declare global {
+  interface Window {
+    google: any;
+  }
+}
 
 const LoginPage = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const { user, loading } = useAuth();
+  const { user, loading, signInWithGoogleCredential } = useAuth();
   const router = useRouter();
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
-  // Redirect to dashboard if user is already logged in
+  // This function will be called by Google's script after a successful sign-in
+  const handleGoogleSignIn = (response: any) => {
+    setIsSigningIn(true); // Show a loading state immediately
+    if (response.credential) {
+      signInWithGoogleCredential(response.credential);
+    }
+  };
+
+  // This effect redirects the user if they are already logged in
   useEffect(() => {
-    if (user && !loading) {
+    if (!loading && user) {
       router.push('/dashboard');
     }
   }, [user, loading, router]);
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (err: any) {
-      setError(err.message);
+  // This effect initializes and renders the Google Sign-In button
+  useEffect(() => {
+    // Don't render the button if we're loading, a user exists, or the ref isn't ready
+    if (loading || user || !googleButtonRef.current) {
+      return;
     }
-  };
 
-  const handleGoogleLogin = async () => {
-    setError(null);
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (err: any) {
-      setError(err.message);
+    if (typeof window.google !== 'undefined') {
+      window.google.accounts.id.initialize({
+        client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+        callback: handleGoogleSignIn,
+      });
+
+      window.google.accounts.id.renderButton(
+        googleButtonRef.current,
+        { theme: 'outline', size: 'large', type: 'standard', text: 'signin_with' }
+      );
     }
-  };
+  }, [loading, user]); // Rerun if loading or user state changes
 
-  // Do not render anything while authentication state is loading
-  if (loading) {
-    return <div>Loading...</div>;
+  // Show a loading spinner if the main auth context is loading OR if we are in the process of signing in
+  if (loading || user || isSigningIn) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen bg-gray-900 text-white">
+        <ArrowPathIcon className="h-8 w-8 animate-spin text-indigo-400 mb-4" />
+        <div className="text-lg">Authenticating Session...</div>
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <div className="p-8 border rounded-lg shadow-md w-full max-w-sm">
-        <h1 className="text-2xl font-bold mb-6 text-center">Login</h1>
-        {error && <p className="text-red-500 mb-4 text-sm">{error}</p>}
-        <form onSubmit={handleEmailLogin}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1" htmlFor="email">Email</label>
-            <input 
-              type="email" 
-              id="email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required 
-              className="w-full border rounded p-2 text-black"
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1" htmlFor="password">Password</label>
-            <input 
-              type="password" 
-              id="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required 
-              className="w-full border rounded p-2 text-black"
-            />
-          </div>
-          <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition-colors">
-            Log In
-          </button>
-        </form>
-        <div className="my-4 text-center">
-          <span className="text-sm text-gray-400">or</span>
-        </div>
-        <button 
-          onClick={handleGoogleLogin} 
-          className="w-full flex items-center justify-center bg-gray-600 text-white p-2 rounded hover:bg-gray-700 transition-colors"
-        >
-          <img src="/google-logo.svg" alt="Google logo" className="w-5 h-5 mr-2"/>
-          Sign in with Google
-        </button>
-        <div className="mt-4 text-center text-sm">
-          Don't have an account? <Link href="/signup" className="text-blue-400 hover:underline">Sign up</Link>
+    <div className="min-h-screen bg-gray-900 flex flex-col justify-center items-center text-white">
+      <div className="text-center p-8 max-w-md w-full">
+        <h1 className="text-5xl font-bold mb-4">PromptForge</h1>
+        <p className="text-gray-400 mb-8">Craft, Test, and Perfect Your AI Prompts.</p>
+        <div className="bg-gray-800 p-8 rounded-lg shadow-xl">
+          <h2 className="text-2xl font-semibold mb-6">Sign In</h2>
+          {/* This div is the container where Google will render its button */}
+          <div ref={googleButtonRef} className="flex justify-center"></div>
         </div>
       </div>
     </div>

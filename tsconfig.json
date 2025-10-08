@@ -1,5 +1,4 @@
-// tsconfig.json
-{
+  {
   "compilerOptions": {
     "lib": [
       "dom",
@@ -22,7 +21,6 @@
         "name": "next"
       }
     ],
-    // Add these two properties
     "baseUrl": ".",
     "paths": {
       "@/*": [
@@ -32,9 +30,10 @@
     "target": "ES2017"
   },
   "include": [
-    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
+    "../.next/types/**/*.ts",
+    "next-env.d.ts",
     ".next/types/**/*.ts"
   ],
   "exclude": [

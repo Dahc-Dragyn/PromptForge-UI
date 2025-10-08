@@ -3,14 +3,14 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar";
-// --- NEW: Import the Toaster component ---
 import { Toaster } from "react-hot-toast";
+import Script from "next/script"; // 1. Import the Next.js Script component
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "PromptForge",
-  description: "Automate and optimize your prompt engineering.",
+  description: "Craft, Test, and Perfect Your AI Prompts",
 };
 
 export default function RootLayout({
@@ -20,22 +20,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        {/* 2. Add the Google Identity Services client script */}
+        {/* This loads the library needed to render the Google Sign-In button */}
+        <Script src="https://accounts.google.com/gsi/client" strategy="beforeInteractive" />
+      </head>
       <body className={inter.className}>
         <AuthProvider>
-          <div>
-            {/* --- NEW: Add the Toaster component here --- */}
-            <Toaster 
-              position="top-center"
-              toastOptions={{
-                style: {
-                  background: '#333',
-                  color: '#fff',
-                },
-              }}
-            />
-            <Navbar />
-            <main>{children}</main>
-          </div>
+          <Toaster position="bottom-center" />
+          <Navbar />
+          <main>{children}</main>
         </AuthProvider>
       </body>
     </html>
