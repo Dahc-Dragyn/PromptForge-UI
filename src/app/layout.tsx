@@ -1,10 +1,10 @@
+import { AuthProvider } from '@/context/AuthContext';
+import { AppCacheProvider } from '@/components/AppCacheProvider';
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { AuthProvider } from "@/context/AuthContext";
-import Navbar from "@/components/Navbar";
 import { Toaster } from "react-hot-toast";
-import Script from "next/script"; // 1. Import the Next.js Script component
+import Script from "next/script";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,15 +21,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* 2. Add the Google Identity Services client script */}
-        {/* This loads the library needed to render the Google Sign-In button */}
         <Script src="https://accounts.google.com/gsi/client" strategy="beforeInteractive" />
       </head>
-      <body className={inter.className}>
+      {/* The body tag has no layout classes to prevent conflicts */}
+      <body className={`${inter.className} bg-gray-900 text-gray-100`}>
         <AuthProvider>
           <Toaster position="bottom-center" />
-          <Navbar />
-          <main>{children}</main>
+          <AppCacheProvider>{children}</AppCacheProvider>
         </AuthProvider>
       </body>
     </html>

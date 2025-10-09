@@ -1,35 +1,38 @@
 import useSWR from 'swr';
 import { apiClient } from '@/lib/apiClient';
-import { useAuth } from '@/context/AuthContext'; // 1. Import useAuth
+import { useAuth } from '@/context/AuthContext';
 
 // Interface properties are correctly using snake_case
 export interface PromptMetric {
-  id: string;
-  name: string;
-  average_rating: number;
-  execution_count: number;
+    id: string;
+    name: string;
+    average_rating: number;
+    execution_count: number;
 }
 
-// 2. FIX FETCHER to correctly handle the Axios response
-const fetcher = async (url: string): Promise<PromptMetric[]> => {
-    const { data } = await apiClient.get<PromptMetric[]>(url);
-    return data;
+// --- DEFINITIVE FIX APPLIED HERE ---
+const fetcher = async (url: string | null): Promise<PromptMetric[]> => {
+    if (!url) {
+        return []; // Guard against null URLs
+    }
+    // We explicitly cast the response to the type we know it will be.
+    return (await apiClient.get(url)) as PromptMetric[];
 };
 
 export function useTopPrompts() {
-  const { user } = useAuth(); // 3. Get the authenticated user
-  const userId = user?.uid;
+    const { user } = useAuth();
+    const userId = user?.uid;
 
-  const endpoint = '/metrics/prompts/all';
-  
-  // 4. Create the user-specific key for SWR
-  const key = userId ? [endpoint, userId] : null;
+    const endpoint = '/metrics/prompts/all';
+    
+    // The key is now just the endpoint string, which the fetcher receives.
+    const key = userId ? endpoint : null;
 
-  const { data, error, isLoading } = useSWR<PromptMetric[]>(key, () => fetcher(endpoint));
+    const { data, error, isLoading } = useSWR<PromptMetric[]>(key, fetcher);
 
-  return {
-    topPrompts: data,
-    isLoading: !error && !data && !!userId, // Correct loading state
-    isError: error,
-  };
+    return {
+        topPrompts: data,
+        isLoading: !error && !data && !!userId,
+        isError: error,
+    };
 }

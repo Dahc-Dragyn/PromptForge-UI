@@ -1,47 +1,49 @@
 import useSWR, { mutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
 import { PromptVersion } from '@/types/prompt';
-import { useAuth } from '@/context/AuthContext'; // 1. Import useAuth
+import { useAuth } from '@/context/AuthContext';
 
-// 2. FIX FETCHER to correctly destructure the data from the Axios response
-const fetcher = async (url: string): Promise<PromptVersion[]> => {
-    const { data } = await apiClient.get<PromptVersion[]>(url);
-    return data;
+// 1. FINAL FETCHER FIX: We explicitly cast the result of apiClient.get
+// to the type we know the interceptor will return.
+const fetcher = async (url: string | null): Promise<PromptVersion[]> => {
+    if (!url) {
+        return [];
+    }
+    // We tell TypeScript to trust that the response is a PromptVersion array.
+    return (await apiClient.get(url)) as PromptVersion[];
 };
 
 export function usePromptVersions(promptId: string | null) {
-  const { user } = useAuth(); // 3. Get the authenticated user
-  const userId = user?.uid;
+    const { user } = useAuth();
+    const userId = user?.uid;
 
-  // 4. Create the user-specific key. It will be null if there's no user or promptId.
-  const key = promptId && userId ? [`/prompts/${promptId}/versions`, userId] : null;
-  
-  const { data, error, isLoading } = useSWR<PromptVersion[]>(key, fetcher);
+    const key = promptId && userId ? `/prompts/${promptId}/versions` : null;
 
-  const createVersion = async (
-    prompt_text: string,
-    commit_message?: string
-  ): Promise<PromptVersion> => {
-    if (!promptId || !userId) {
-      throw new Error("Prompt ID and user authentication are required to create a new version.");
-    }
+    const { data, error, isLoading } = useSWR<PromptVersion[]>(key, fetcher);
 
-    // 5. FIX: Destructure the 'data' from the post request's response
-    const { data: newVersion } = await apiClient.post<PromptVersion>(`/prompts/${promptId}/versions`, {
-      prompt_text,
-      commit_message,
-    });
-    
-    // Revalidate the versions list for this specific prompt using the user-aware key
-    mutate(key); 
-    
-    return newVersion; // Now returns the correct PromptVersion object
-  };
+    const createVersion = async (
+        prompt_text: string,
+        commit_message?: string
+    ): Promise<PromptVersion> => {
+        if (!promptId || !userId) {
+            throw new Error("Prompt ID and user authentication are required to create a new version.");
+        }
 
-  return {
-    versions: data,
-    isLoading: !error && !data && !!key, // Loading is true only if we have a key
-    isError: error,
-    createVersion,
-  };
+        // 2. FINAL CREATE FIX: We apply the same explicit cast here.
+        // The post request returns a single PromptVersion object.
+        const newVersion = (await apiClient.post(`/prompts/${promptId}/versions`, {
+            prompt_text,
+            commit_message,
+        })) as PromptVersion;
+
+        mutate(key);
+        return newVersion;
+    };
+
+    return {
+        versions: data,
+        isLoading: !error && !data && !!key,
+        isError: error,
+        createVersion,
+    };
 }
