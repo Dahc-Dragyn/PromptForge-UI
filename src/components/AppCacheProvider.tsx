@@ -1,67 +1,38 @@
+// src/components/AppCacheProvider.tsx
 'use client';
 
-import React, { ReactNode, useCallback } from 'react';
-import { SWRConfig, Fetcher } from 'swr';
+import { SWRConfig } from 'swr';
 import { useAuth } from '@/context/AuthContext';
-import Navbar from './Navbar';
+import { apiClient } from '@/lib/apiClient';
+import React from 'react';
 
-interface AppCacheProviderProps {
-  children: ReactNode;
-}
-
-export const AppCacheProvider = ({ children }: AppCacheProviderProps) => {
-  const { user, loading, getToken } = useAuth();
-  const sessionKey = user?.uid || 'anonymous';
-
-  const secureFetcher: Fetcher<any, string> = useCallback(
-    async (url: string) => {
-      const { apiClient } = await import('@/lib/apiClient');
-      const token = await getToken();
-      const config = {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-      };
-      try {
-        return await apiClient.get(url, config);
-      } catch (error: any) {
-        const err = new Error(error.response?.data?.detail || 'An API error occurred.');
-        (err as any).status = error.response?.status;
-        throw err;
-      }
-    },
-    [getToken]
-  );
-
-  if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-gray-900 text-white">
-        Loading Application...
-      </div>
-    );
-  }
-
+// This component acts as a "reset" boundary for SWR's cache.
+// When the `key` prop changes, React will unmount the old component
+// and its children, destroying the old cache and creating a new one.
+const SWRProvider = ({ children }: { children: React.ReactNode }) => {
   return (
-    // This SWRConfig provides the cache context but renders no HTML itself.
     <SWRConfig
-      key={sessionKey}
       value={{
-        provider: () => new Map(),
-        fetcher: secureFetcher,
+        fetcher: (url: string) => apiClient.get(url),
+        revalidateOnFocus: false,
       }}
     >
-      {/* 1. This is the single, top-level container for the entire visual layout. */}
-      {/* It forces the layout to be at least the full height of the screen. */}
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        {/* 2. DEFINITIVE FIX: The 'container' and 'mx-auto' classes are GONE. */}
-        {/* The 'flex-grow' class makes this main section fill all available space. */}
-        {/* The 'p-4' class adds padding so the content doesn't touch the screen edges. */}
-        <main className="flex-grow p-4">
-          {children}
-        </main>
-      </div>
+      {children}
     </SWRConfig>
   );
+};
+
+// This is the main component we will use in our layout.
+// It gets the user from the AuthContext.
+export const AppCacheProvider = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth();
+
+  // We generate a key that is stable for a given user session but
+  // changes when the user logs in or out.
+  // While loading, we can use a null key. When a user logs in, `user.uid`
+  // becomes the key, forcing a re-mount. When they log out, it goes back
+  // to null, forcing another re-mount.
+  const cacheKey = loading ? null : user?.uid || null;
+
+  return <SWRProvider key={cacheKey}>{children}</SWRProvider>;
 };
