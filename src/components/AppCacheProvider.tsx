@@ -13,8 +13,11 @@ const SWRProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <SWRConfig
       value={{
+        // Use our configured apiClient as the global fetcher
         fetcher: (url: string) => apiClient.get(url),
+        // Sensible defaults - adjust if needed, but disable focus revalidation for now
         revalidateOnFocus: false,
+        // Optional: Add global error handling or other SWR options here
       }}
     >
       {children}
@@ -29,10 +32,12 @@ export const AppCacheProvider = ({ children }: { children: React.ReactNode }) =>
 
   // We generate a key that is stable for a given user session but
   // changes when the user logs in or out.
-  // While loading, we can use a null key. When a user logs in, `user.uid`
+  // While loading, we use 'loading'. When a user logs in, `user.uid`
   // becomes the key, forcing a re-mount. When they log out, it goes back
-  // to null, forcing another re-mount.
-  const cacheKey = loading ? null : user?.uid || null;
+  // to 'logged-out', forcing another re-mount. This *guarantees* cache isolation.
+  const cacheKey = loading ? 'loading' : user?.uid || 'logged-out';
 
+  // The key prop on SWRProvider ensures the entire SWR context is reset
+  // when the authentication state changes.
   return <SWRProvider key={cacheKey}>{children}</SWRProvider>;
 };

@@ -1,49 +1,49 @@
+// src/hooks/usePromptVersions.ts
 import useSWR, { mutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
 import { PromptVersion } from '@/types/prompt';
 import { useAuth } from '@/context/AuthContext';
 
-// 1. FINAL FETCHER FIX: We explicitly cast the result of apiClient.get
-// to the type we know the interceptor will return.
-const fetcher = async (url: string | null): Promise<PromptVersion[]> => {
-    if (!url) {
-        return [];
-    }
-    // We tell TypeScript to trust that the response is a PromptVersion array.
-    return (await apiClient.get(url)) as PromptVersion[];
-};
+// Local fetcher is no longer needed.
+// We will use the global fetcher from AppCacheProvider.
 
 export function usePromptVersions(promptId: string | null) {
-    const { user } = useAuth();
-    const userId = user?.uid;
+  const { user } = useAuth();
+  const userId = user?.uid;
 
-    const key = promptId && userId ? `/prompts/${promptId}/versions` : null;
+  // API FIX: Added trailing slash
+  const endpoint = `/prompts/${promptId}/versions/`;
 
-    const { data, error, isLoading } = useSWR<PromptVersion[]>(key, fetcher);
+  // CACHE KEY: Changed to the user-aware array pattern
+  const key = promptId && userId ? [endpoint, userId] : null;
 
-    const createVersion = async (
-        prompt_text: string,
-        commit_message?: string
-    ): Promise<PromptVersion> => {
-        if (!promptId || !userId) {
-            throw new Error("Prompt ID and user authentication are required to create a new version.");
-        }
+  // SWR now uses the global fetcher from AppCacheProvider
+  const { data, error } = useSWR<PromptVersion[]>(key);
 
-        // 2. FINAL CREATE FIX: We apply the same explicit cast here.
-        // The post request returns a single PromptVersion object.
-        const newVersion = (await apiClient.post(`/prompts/${promptId}/versions`, {
-            prompt_text,
-            commit_message,
-        })) as PromptVersion;
+  const createVersion = async (
+    prompt_text: string,
+    commit_message?: string
+  ): Promise<PromptVersion> => {
+    if (!promptId || !userId) {
+      throw new Error("Prompt ID and user authentication are required to create a new version.");
+    }
 
-        mutate(key);
-        return newVersion;
-    };
+    // API FIX: Use the 'endpoint' variable which has the trailing slash
+    // The cast is still useful here as apiClient.post is generic
+    const newVersion = (await apiClient.post(endpoint, {
+      prompt_text,
+      commit_message,
+    })) as PromptVersion;
 
-    return {
-        versions: data,
-        isLoading: !error && !data && !!key,
-        isError: error,
-        createVersion,
-    };
+    // Mutate the user-specific key to update the list
+    mutate(key);
+    return newVersion;
+  };
+
+  return {
+    versions: data,
+    isLoading: !error && !data && !!key, // Correct loading state
+    isError: error,
+    createVersion,
+  };
 }

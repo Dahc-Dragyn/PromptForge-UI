@@ -1,7 +1,7 @@
-// src/app/dashboard/page.tsx
 'use client';
 
-import { useState, Suspense, useMemo, useEffect } from 'react';
+// Removed 'useEffect', added console.log for debugging
+import { useState, Suspense, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -12,7 +12,7 @@ import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useRecentActivity } from '@/hooks/useRecentActivity';
 import { PromptComposerProvider } from '@/context/PromptComposerContext';
 import { apiClient } from '@/lib/apiClient';
-import { PromptTemplate } from '@/types/template'; 
+import { PromptTemplate } from '@/types/template';
 import { Prompt, PromptVersion } from '@/types/prompt';
 
 import Modal from '@/components/Modal';
@@ -22,15 +22,16 @@ import TopPromptsWidget from '@/components/TopPromptsWidget';
 import RecentActivityWidget from '@/components/RecentActivityWidget';
 import SendToLlm from '@/components/SendToLlm';
 import StarRating from '@/components/StarRating';
-import { 
-    ArrowPathIcon, ArchiveBoxIcon, ArrowUturnLeftIcon, TrashIcon, 
-    DocumentDuplicateIcon, PencilIcon 
+import PrivateRoute from '@/components/PrivateRoute';
+import {
+    ArrowPathIcon, ArchiveBoxIcon, ArrowUturnLeftIcon, TrashIcon,
+    DocumentDuplicateIcon, PencilIcon
 } from '@heroicons/react/24/outline';
 
 type SortOrder = 'newest' | 'oldest' | 'alphabetical';
 
 const DashboardContent = () => {
-    const { user, loading: authLoading } = useAuth();
+    const { user } = useAuth();
     const router = useRouter();
 
     const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState(false);
@@ -39,17 +40,16 @@ const DashboardContent = () => {
     const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
     const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
     const [ratedInSession, setRatedInSession] = useState<Set<string>>(new Set());
-    
+
     const { prompts, isLoading: promptsLoading, isError: promptsError, deletePrompt, archivePrompt, ratePrompt } = usePrompts(true);
     const { templates, isLoading: templatesLoading, isError: templatesError, createTemplate, deleteTemplate, archiveTemplate, copyTemplate } = usePromptTemplates(true);
     const { activities, isLoading: activityLoading, isError: activityError } = useRecentActivity();
 
-    // FIX: Redirect logic is now inside a useEffect hook
-    useEffect(() => {
-        if (!authLoading && !user) {
-            router.push('/login');
-        }
-    }, [user, authLoading, router]);
+    // DEBUGGING STEP: Log all data sources as seen by the dashboard component.
+    // This shows us what data is being passed from the hooks to the UI widgets.
+    console.log("DEBUG (Dashboard): Prompts:", prompts);
+    console.log("DEBUG (Dashboard): Templates:", templates);
+    console.log("DEBUG (Dashboard): Activities:", activities);
 
     const visibleTemplates = useMemo(() => {
         const sorted = (templates ?? []).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -72,17 +72,15 @@ const DashboardContent = () => {
     const handleAction = (actionPromise: Promise<unknown>, messages: { loading: string; success: string; error: string; }) => {
         return toast.promise(actionPromise, messages);
     };
-    
+
     const handleCopyText = async (promptId: string) => {
         setCopiedPromptId(promptId);
         const toastId = toast.loading('Copying...');
         try {
-            const versions = await apiClient.get<PromptVersion[]>(`/prompts/${promptId}/versions`);
+            const { data: versions } = await apiClient.get<PromptVersion[]>(`/prompts/${promptId}/versions`);
             if (!versions || versions.length === 0) throw new Error("This prompt has no versions to copy.");
-            
             const latestVersion = versions.sort((a, b) => b.version_number - a.version_number)[0];
             await navigator.clipboard.writeText(latestVersion.prompt_text);
-            
             toast.success('Copied to clipboard!', { id: toastId });
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to copy.';
@@ -91,7 +89,7 @@ const DashboardContent = () => {
             setTimeout(() => setCopiedPromptId(null), 2000);
         }
     };
-    
+
     // TEMPLATE HANDLERS
     const handleArchiveTemplate = (templateId: string, isArchived: boolean) => archiveTemplate(templateId, isArchived);
     const handleDeleteTemplate = (templateId: string) => {
@@ -126,10 +124,6 @@ const DashboardContent = () => {
           .then(() => setRatedInSession(prev => new Set(prev).add(promptId)))
           .catch(() => {});
     };
-
-    if (authLoading || !user) {
-        return <div className="text-center p-8 text-white">Authenticating...</div>;
-    }
 
     return (
         <>
@@ -218,10 +212,10 @@ const DashboardContent = () => {
                                     <p className="text-sm text-gray-400 line-clamp-2 mb-3">{prompt.task_description}</p>
                                     <div className="flex items-center justify-between pt-3 border-t border-gray-700/50">
                                         <div className="flex items-center flex-wrap gap-x-4 gap-y-2">
-                                            <StarRating 
-                                                currentRating={Math.round(prompt.average_rating || 0)} 
-                                                disabled={ratedInSession.has(prompt.id)} 
-                                                onRatingChange={(rating) => handleRate(prompt.id, prompt.latest_version_number ?? 1, rating)} 
+                                            <StarRating
+                                                currentRating={Math.round(prompt.average_rating || 0)}
+                                                disabled={ratedInSession.has(prompt.id)}
+                                                onRatingChange={(rating) => handleRate(prompt.id, prompt.latest_version_number ?? 1, rating)}
                                             />
                                             <div className="flex items-center gap-x-2">
                                                 <Link href={`/prompts/${prompt.id}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">View</Link>
@@ -238,7 +232,7 @@ const DashboardContent = () => {
                             ))}
                         </div>
                     </div>
-                    
+
                     <div className="flex flex-col lg:col-span-2 2xl:col-span-1">
                         <h2 className="text-2xl font-bold mb-4">Compose a Prompt</h2>
                         <div className="flex-grow">
@@ -262,7 +256,10 @@ const DashboardContent = () => {
 
 const DashboardPage = () => (
     <Suspense fallback={<div className="text-center p-8 bg-gray-900 text-white min-h-screen">Loading Dashboard...</div>}>
-        <DashboardContent />
+        {/* FIX: Use the PrivateRoute component to wrap the protected content */}
+        <PrivateRoute>
+            <DashboardContent />
+        </PrivateRoute>
     </Suspense>
 );
 
