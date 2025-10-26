@@ -1,4 +1,3 @@
-// src/hooks/usePromptTemplates.ts
 import useSWR, { mutate as globalMutate } from 'swr';
 import { useAuth } from '@/context/AuthContext';
 import { PromptTemplate } from '@/types/template';
@@ -11,7 +10,7 @@ export function usePromptTemplates(includeArchived = false) {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  // This is correct: list endpoints require a slash
+  // List endpoints still need the trailing slash
   const endpoint = includeArchived ? '/templates/?include_archived=true' : '/templates/';
   const key = userId ? [endpoint, userId] : null;
 
@@ -19,66 +18,62 @@ export function usePromptTemplates(includeArchived = false) {
 
   const revalidateAllLists = () => {
     if (!userId) return;
+    // List keys still need the trailing slash
     globalMutate([`/templates/`, userId]);
     globalMutate([`/templates/?include_archived=true`, userId]);
   };
 
   const createTemplate = async (templateData: CreateTemplateData) => {
-    // This is correct: POST /templates/ needs a slash
+    // POST needs trailing slash
     const newTemplate = await apiClient.post<PromptTemplate>('/templates/', templateData);
     revalidateAllLists();
-    return newTemplate;
+    return newTemplate.data; // Return .data
   };
 
   const updateTemplate = async (templateId: string, templateData: UpdateTemplateData) => {
     if (!userId) throw new Error('User not authenticated');
-    
-    // This is correct: PATCH /templates/{id}/ needs a slash
-    const updatedTemplate = await apiClient.patch<PromptTemplate>(
+
+    // PATCH needs trailing slash
+    const updatedTemplateResponse = await apiClient.patch<PromptTemplate>(
       `/templates/${templateId}/`,
       templateData
     );
-    
-    // --- THIS IS THE FIX ---
-    // The detail page SWR key does NOT have a slash.
-    // We must mutate the key that useTemplateDetail is actually using.
-    globalMutate([`/templates/${templateId}`, userId], updatedTemplate, { revalidate: false });
-    // -------------------------
-    
+
+    // --- FINAL FIX: Remove trailing slash from detail key for cache mutation ---
+    globalMutate([`/templates/${templateId}`, userId], updatedTemplateResponse.data, { revalidate: false });
+
     revalidateAllLists();
-    return updatedTemplate;
+    return updatedTemplateResponse.data; // Return .data
   };
 
   const deleteTemplate = async (templateId: string) => {
-    // This is correct: DELETE /templates/{id}/ needs a slash
+    // DELETE needs trailing slash
     await apiClient.delete(`/templates/${templateId}/`);
     revalidateAllLists();
   };
 
   const archiveTemplate = async (templateId: string, is_archived: boolean) => {
     if (!userId) throw new Error('User not authenticated');
-    
-    // This is correct: PATCH /templates/{id}/ needs a slash
-    await apiClient.patch(`/templates/${templateId}/`, { is_archived });
-    
-    // --- THIS IS THE FIX ---
-    // The detail page SWR key does NOT have a slash.
-    globalMutate([`/templates/${templateId}`, userId]);
-    // -------------------------
-    
+
+    // PATCH needs trailing slash
+    const response = await apiClient.patch(`/templates/${templateId}/`, { is_archived });
+
+    // --- FINAL FIX: Remove trailing slash from detail key for cache mutation ---
+    globalMutate([`/templates/${templateId}`, userId], response.data, { revalidate: false });
+
     revalidateAllLists();
   };
 
   const copyTemplate = async (templateId: string) => {
     if (!userId) throw new Error('User not authenticated');
-    
-    // This is correct: POST /templates/{id}/copy/ needs a slash
+
+    // POST copy needs trailing slash
     const newTemplate = await apiClient.post<PromptTemplate>(
       `/templates/${templateId}/copy/`,
       {}
     );
     revalidateAllLists();
-    return newTemplate;
+    return newTemplate.data; // Return .data
   };
 
   const templates = data ? data.map((t) => ({ ...t, is_archived: t.is_archived ?? false })) : undefined;
@@ -96,13 +91,14 @@ export function usePromptTemplates(includeArchived = false) {
   };
 }
 
-// --- THIS IS THE MAIN FIX FOR THE "VIEW" BUTTON ---
-// The backend GET route does not have a trailing slash.
+// ----------------------------------------------------------------------
+
 export function useTemplateDetail(templateId: string | null) {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  const endpoint = `/templates/${templateId}`; // <-- TRAILING SLASH REMOVED
+  // --- FINAL FIX: Remove trailing slash to match the working backend route ---
+  const endpoint = `/templates/${templateId}`;
   const key = templateId && userId ? [endpoint, userId] : null;
 
   const { data, error, mutate } = useSWR<PromptTemplate>(key);
