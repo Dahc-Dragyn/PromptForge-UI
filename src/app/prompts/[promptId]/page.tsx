@@ -12,53 +12,50 @@ import PrivateRoute from '@/components/PrivateRoute';
 import NewVersionForm from '@/components/NewVersionForm';
 import Modal from '@/components/Modal';
 import StarRating from '@/components/StarRating';
-// --- NEW: Added necessary icons ---
+import Link from 'next/link';
+import SendToLlm from '@/components/SendToLlm'; // Correct import
 import {
   ArrowPathIcon,
   PlusIcon,
   EyeIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  ArrowUturnLeftIcon, // For Back button
-  ClipboardDocumentIcon, // For Copy button
-  PaperAirplaneIcon // For Send To button
+  ArrowUturnLeftIcon,
+  ClipboardDocumentIcon,
 } from '@heroicons/react/24/outline';
-// --- NEW: Import Link for Back button ---
-import Link from 'next/link';
+
 
 function PromptDetailContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
+  // Ensure promptId is correctly extracted
   const promptId = params.promptId as string;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<PromptVersion | null>(null);
-
-  // Set history visible by default (as per previous state)
   const [isHistoryVisible, setIsHistoryVisible] = useState(true);
 
-  // SWR for Prompt details (no trailing slash)
+  // SWR for Prompt details
   const {
     data: prompt,
     error: promptError,
     isLoading: promptLoading,
-    mutate: mutatePrompt
   } = useSWR<Prompt>(
-    user ? `/prompts/${promptId}` : null
+    // Pass promptId here only if it exists
+    user && promptId ? `/prompts/${promptId}` : null
   );
 
-  // SWR for Prompt Versions (no trailing slash needed here either based on hook logic)
+  // SWR for Prompt Versions
   const {
     versions,
     isError: versionsError,
     isLoading: versionsLoading,
-    createVersion,
-  } = usePromptVersions(promptId);
+  } = usePromptVersions(promptId); // Pass promptId here
 
-  const { updatePrompt, ratePrompt } = usePrompts();
+  const { ratePrompt } = usePrompts();
 
-  // --- NEW: Copy function ---
+  // Copy function remains the same
   const handleCopy = (text: string | undefined) => {
     if (!text) {
       toast.error('No prompt text available to copy.');
@@ -69,20 +66,9 @@ function PromptDetailContent() {
       .catch(err => toast.error('Failed to copy text.'));
   };
 
-  // --- NEW: Placeholder Send To function ---
-  // Replace this with actual implementation later
-  const handleSendTo = (text: string | undefined) => {
-     if (!text) {
-      toast.error('No prompt text available to send.');
-      return;
-    }
-    // TODO: Implement actual 'Send To' logic (e.g., open a modal, redirect, etc.)
-    toast('Send To functionality not yet implemented.', { icon: '🚧' });
-    console.log("Send To clicked. Text:", text);
-  };
-
   const handleRate = (rating: number) => {
-    if (!prompt) return;
+    // Ensure prompt and prompt.id exist before proceeding
+    if (!prompt?.id) return;
     const promise = ratePrompt(prompt.id, prompt.latest_version_number ?? 1, rating);
     toast.promise(promise, {
       loading: 'Submitting rating...',
@@ -91,18 +77,22 @@ function PromptDetailContent() {
     });
   };
 
-  if (authLoading || promptLoading || versionsLoading) {
-    return <div className="text-center p-8 text-white"><ArrowPathIcon className="h-6 w-6 animate-spin mx-auto" /></div>;
+  // Loading and Error states remain the same
+  if (authLoading || (promptId && (promptLoading || versionsLoading))) {
+     return <div className="text-center p-8 text-white"><ArrowPathIcon className="h-6 w-6 animate-spin mx-auto" /></div>;
   }
-
+  // Check for promptId existence before error checks relying on it
+  if (!promptId) {
+     return <div className="text-center p-8 text-red-400">Prompt ID not found in URL.</div>;
+  }
   if (promptError || versionsError) {
     return <div className="text-center p-8 text-red-400">Could not load prompt details.</div>;
   }
-
   if (!prompt) {
     return <div className="text-center p-8 text-white">Prompt not found.</div>;
   }
 
+  // Determine text to display remains the same
   const latestVersion = versions?.find(v => v.version_number === prompt.latest_version_number);
   const promptTextToDisplay = latestVersion?.prompt_text || versions?.[0]?.prompt_text;
   const versionNumberToDisplay = latestVersion?.version_number || versions?.[0]?.version_number || 1;
@@ -112,7 +102,7 @@ function PromptDetailContent() {
     <>
       <div className="max-w-6xl mx-auto p-4 sm:p-8 text-white">
 
-        {/* --- NEW: Back Button Row --- */}
+        {/* Back Button Row remains the same */}
         <div className="mb-6">
           <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
             <ArrowUturnLeftIcon className="h-4 w-4" />
@@ -120,14 +110,14 @@ function PromptDetailContent() {
           </Link>
         </div>
 
-        {/* --- PRIMARY CONTENT BLOCK (LIVE PROMPT) --- */}
+        {/* Primary Content Block */}
         <div className="bg-gray-800 p-6 rounded-lg shadow-xl mb-8">
-          <div className="flex justify-between items-start mb-4"> {/* Added mb-4 */}
+          <div className="flex justify-between items-start mb-4">
             {/* Left side: Title, Description, Rating */}
             <div>
               <h1 className="text-3xl font-bold mb-2">{prompt.name}</h1>
               <p className="text-gray-400 mb-4">{prompt.task_description}</p>
-              <div className="flex items-center gap-2"> {/* Group rating and version */}
+              <div className="flex items-center gap-2">
                 <StarRating
                   currentRating={Math.round(prompt.average_rating || 0)}
                   onRatingChange={handleRate}
@@ -138,22 +128,19 @@ function PromptDetailContent() {
               </div>
             </div>
             {/* Right side: Action Buttons */}
-            {/* --- NEW: Action Buttons --- */}
-            <div className="flex-shrink-0 flex items-center gap-2 mt-1"> {/* Aligned buttons */}
+            <div className="flex-shrink-0 flex items-center gap-2 mt-1">
                <button
                   onClick={() => handleCopy(promptTextToDisplay)}
-                  className="p-2 bg-gray-700 rounded hover:bg-gray-600 transition-colors"
+                  className="p-2 bg-gray-700 rounded hover:bg-gray-600 transition-colors disabled:opacity-50"
                   title="Copy Prompt Text"
+                  disabled={!promptTextToDisplay} // Disable if no text
                >
                  <ClipboardDocumentIcon className="h-5 w-5"/>
                </button>
-               <button
-                 onClick={() => handleSendTo(promptTextToDisplay)}
-                 className="p-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors"
-                 title="Send To..."
-               >
-                 <PaperAirplaneIcon className="h-5 w-5"/>
-               </button>
+               {/* --- FINAL FIX: Removed the incorrect promptText prop --- */}
+               {promptId && ( // Render only if promptId exists
+                 <SendToLlm promptId={promptId} />
+               )}
             </div>
           </div>
 
@@ -168,9 +155,9 @@ function PromptDetailContent() {
           )}
         </div>
 
-        {/* --- VERSION HISTORY (OPEN BY DEFAULT) --- */}
+        {/* Version History remains the same */}
         <div className="bg-gray-800 p-6 rounded-lg shadow-xl">
-          <div className="flex justify-between items-center mb-4">
+           <div className="flex justify-between items-center mb-4">
             <button
               onClick={() => setIsHistoryVisible(!isHistoryVisible)}
               className="flex items-center gap-2 text-2xl font-bold hover:text-gray-300 transition-colors"
@@ -197,13 +184,12 @@ function PromptDetailContent() {
                     <div className="flex justify-between items-center mb-2">
                       <div className="flex items-center gap-3">
                         <span className="text-xl font-semibold text-blue-400">v{version.version_number}</span>
-                        {version.version_number === prompt.latest_version_number && (
+                        {version.version_number === prompt?.latest_version_number && (
                           <span className="px-2 py-0.5 text-xs bg-green-600 text-white rounded-full">Live</span>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        {/* Only show View icon for non-live versions */}
-                        {version.version_number !== prompt.latest_version_number && (
+                        {version.version_number !== prompt?.latest_version_number && (
                           <button
                             onClick={() => setSelectedVersion(version)}
                             className="p-1.5 text-xs bg-gray-600 text-white rounded hover:bg-gray-500"
@@ -212,14 +198,13 @@ function PromptDetailContent() {
                             <EyeIcon className="h-4 w-4" />
                           </button>
                         )}
-                        {/* 'Promote to Live' logic (currently disabled) */}
                       </div>
                     </div>
                     <p className="text-sm text-gray-400 italic line-clamp-2">
-                      {version.commit_message || "No commit message for this version."}
+                      {version.commit_message || "No commit message."}
                     </p>
                     <p className="text-xs text-gray-500 mt-2">
-                      Created at: {new Date(version.created_at).toLocaleString()}
+                      Created: {new Date(version.created_at).toLocaleString()}
                     </p>
                   </div>
                 ))}
@@ -228,18 +213,16 @@ function PromptDetailContent() {
         </div>
       </div>
 
-      {/* New Version Modal */}
+      {/* Modals remain the same */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Create New Version">
-        <NewVersionForm promptId={promptId} />
+        {promptId && <NewVersionForm promptId={promptId} />}
       </Modal>
-
-      {/* View Version Modal */}
       <Modal isOpen={!!selectedVersion} onClose={() => setSelectedVersion(null)} title={`View Version ${selectedVersion?.version_number}`}>
-        {selectedVersion && (
+         {selectedVersion && (
           <div className="text-gray-300">
             <h3 className="text-lg font-semibold mb-2">Commit Message:</h3>
             <p className="bg-gray-700 p-3 rounded mb-4 text-sm italic">
-              {selectedVersion.commit_message || "No commit message for this version."}
+              {selectedVersion.commit_message || "No commit message."}
             </p>
             <h3 className="text-lg font-semibold mb-2">Prompt Text:</h3>
             <pre className="bg-gray-900 p-4 rounded-md whitespace-pre-wrap font-mono text-sm">
@@ -252,6 +235,7 @@ function PromptDetailContent() {
   );
 }
 
+// Page component remains the same
 const PromptDetailPage = () => (
   <Suspense fallback={<div className="text-center p-8 bg-gray-900 text-white min-h-screen">Loading...</div>}>
     <PrivateRoute>
