@@ -5,10 +5,11 @@ import { useAuth } from '@/context/AuthContext';
 // Added AxiosResponse import if needed by apiClient typing
 import { AxiosResponse } from 'axios';
 
+// --- FIX: This interface now matches what the UI components are sending ---
 interface CreatePromptData {
   name: string;
-  task_description: string; // Aligned with API
-  initial_prompt_text: string; // Aligned with API
+  description: string; // <-- This was the UI field name
+  text: string;        // <-- This was the UI field name
 }
 
 // Fetcher for lists
@@ -39,8 +40,8 @@ export function usePrompts(includeArchived = false) {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  // Endpoint and Key setup (no trailing slash for prompts list)
-  const endpoint = includeArchived ? '/prompts?include_archived=true' : '/prompts';
+  // --- KEPT FIX: Trailing slash is correct ---
+  const endpoint = includeArchived ? '/prompts/?include_archived=true' : '/prompts/';
   const key = userId ? [endpoint, userId] : null;
 
   // SWR hook using the listFetcher
@@ -49,14 +50,27 @@ export function usePrompts(includeArchived = false) {
   // Function to revalidate both list types globally
   const revalidateAllLists = () => {
     if (!userId) return;
-    // Keys used for global mutation (no trailing slash)
-    globalMutate([`/prompts`, userId]);
-    globalMutate([`/prompts?include_archived=true`, userId]);
+    // --- KEPT FIX: Trailing slash is correct ---
+    globalMutate([`/prompts/`, userId]);
+    globalMutate([`/prompts/?include_archived=true`, userId]);
   };
 
+  // --- FIX: This function now accepts the UI's data shape and maps it ---
   const createPrompt = async (promptData: CreatePromptData) => {
     if (!userId) throw new Error("User must be logged in.");
-    const response = await apiClient.post<Prompt>('/prompts', promptData);
+
+    // --- This is the new mapping logic ---
+    const apiPayload = {
+      name: promptData.name,
+      task_description: promptData.description, // Map description -> task_description
+      initial_prompt_text: promptData.text       // Map text -> initial_prompt_text
+    };
+    // ------------------------------------
+
+    // --- KEPT FIX: Trailing slash is correct ---
+    // Now we send the correctly mapped apiPayload
+    const response = await apiClient.post<Prompt>('/prompts/', apiPayload); 
+    
     const newPrompt = (response && 'data' in response) ? (response as AxiosResponse<Prompt>).data : (response as Prompt);
     revalidateAllLists();
     return newPrompt;
@@ -64,6 +78,7 @@ export function usePrompts(includeArchived = false) {
 
   const updatePrompt = async (promptId: string, promptData: { name?: string; task_description?: string }) => {
     if (!userId) throw new Error("User must be logged in.");
+    // No slash needed for specific resource
     const response = await apiClient.patch<Prompt>(`/prompts/${promptId}`, promptData);
     const updatedPrompt = (response && 'data' in response) ? (response as AxiosResponse<Prompt>).data : (response as Prompt);
     globalMutate([`/prompts/${promptId}`, userId], updatedPrompt, { revalidate: false });
@@ -77,8 +92,9 @@ export function usePrompts(includeArchived = false) {
     const optimisticData = currentData.filter(p => p.id !== promptId);
     mutate(optimisticData, { revalidate: false });
     try {
+      // No slash needed for specific resource
       await apiClient.delete(`/prompts/${promptId}`);
-      revalidateAllLists(); // Rely on global revalidation
+      revalidateAllLists();
     } catch (e) {
       mutate(currentData, { revalidate: false });
       console.error("Failed to delete prompt:", e);
@@ -87,42 +103,26 @@ export function usePrompts(includeArchived = false) {
   };
 
   const archivePrompt = async (promptId: string, isArchived: boolean) => {
-    // Ensure user and the hook's key are available
     if (!userId || !key) return;
 
-    const currentData = data || []; // Get current cached list data
+    const currentData = data || [];
 
-    // --- REFINED OPTIMISTIC UPDATE ---
-    // 1. Map to update the 'is_archived' status optimistically.
-    // 2. Filter *after* mapping, only if the current view should hide archived items.
     const optimisticData = currentData
         .map(p => (p.id === promptId ? { ...p, is_archived: isArchived } : p))
         .filter(p => {
-             // Keep the item if we *are* showing archived items,
-             // OR if the item is *not* the one being archived,
-             // OR if the item *is* the one being changed, but it's being *unarchived*.
             return includeArchived || p.id !== promptId || (p.id === promptId && !isArchived);
          });
 
-
-    // Update the local cache optimistically, DO NOT REVALIDATE YET
     mutate(optimisticData, { revalidate: false });
 
     try {
-      // Make the actual API call (no trailing slash for prompts)
+      // No slash needed for specific resource
       await apiClient.patch<Prompt>(`/prompts/${promptId}`, { is_archived: isArchived });
-
-      // --- SIMPLIFIED REVALIDATION ---
-      // Successfully updated backend. Now, trigger SWR to globally revalidate
-      // both list keys (/prompts and /prompts?include_archived=true).
-      // This ensures all potential views of the data are updated.
       revalidateAllLists();
 
     } catch (e) {
-      // FAILURE: Revert the local cache to the original data, DO NOT REVALIDATE
       mutate(currentData, { revalidate: false });
       console.error("Failed to archive prompt:", e);
-      // Re-throw the error
       throw e;
     }
   };
@@ -132,7 +132,6 @@ export function usePrompts(includeArchived = false) {
     const currentData = data || [];
     const promptToRate = currentData.find(p => p.id === promptId);
 
-    // If prompt not in cache, skip optimistic update and just call API/revalidate
     if (!promptToRate) {
         console.warn("Prompt not found in cache for rating optimistic update.");
         try {
@@ -142,35 +141,29 @@ export function usePrompts(includeArchived = false) {
              console.error("Failed to submit rating:", e);
              throw e;
         }
-        return; // Exit function early
+        return;
     }
 
-    // Calculate new average rating optimistically
     const oldAvgRating = promptToRate.average_rating || 0;
     const oldRatingCount = promptToRate.rating_count || 0;
     const newRatingCount = oldRatingCount + 1;
     const newAvgRating = ((oldAvgRating * oldRatingCount) + rating) / newRatingCount;
 
-    // Create optimistic data
     const optimisticData = currentData.map(p =>
         p.id === promptId
             ? { ...p, average_rating: newAvgRating, rating_count: newRatingCount }
             : p
     );
-    // Update cache optimistically without refetching yet
     mutate(optimisticData, { revalidate: false });
 
     try {
-      // API call to rate (no trailing slash)
       await apiClient.post('/metrics/rate', {
         prompt_id: promptId,
         version_number: versionNumber,
         rating: rating
       });
-      // Revalidate lists after successful API call
       revalidateAllLists();
     } catch (e) {
-      // Revert UI on failure
       mutate(currentData, { revalidate: false });
       console.error("Failed to submit rating:", e);
       throw e;
@@ -193,11 +186,10 @@ export function usePromptDetail(promptId: string | null) {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  // Endpoint and key for single prompt detail (no trailing slash)
+  // No slash needed for specific resource
   const endpoint = `/prompts/${promptId}`;
   const key = promptId && userId ? [endpoint, userId] : null;
 
-  // SWR hook using the singleFetcher
   const { data, error, mutate } = useSWR(key, singleFetcher);
 
   return {
