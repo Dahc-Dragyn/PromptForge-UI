@@ -6,12 +6,17 @@ async function handler(req: NextRequest) {
     return new NextResponse('Backend API URL is not configured.', { status: 500 });
   }
 
-  // Use the original simple logic
   let requestedPath = req.nextUrl.pathname.replace(/^\/api-proxy/, '');
   
-  // This original logic was correct because it only adds a slash to the
-  // exact list routes, just as the backend requires.
-  const pathsNeedingSlash = ['/prompts', '/templates'];
+  // --- REVERT ---
+  // The 404 error proved that /templates/compose does NOT need a trailing slash.
+  // We are reverting to the original, correct list.
+  const pathsNeedingSlash = [
+    '/prompts', 
+    '/templates'
+  ];
+  // --- END REVERT ---
+
   if (pathsNeedingSlash.includes(requestedPath)) {
     requestedPath += '/';
   }
