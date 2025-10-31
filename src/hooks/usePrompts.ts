@@ -2,7 +2,7 @@ import useSWR, { mutate as globalMutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
 import { Prompt } from '@/types/prompt';
 import { useAuth } from '@/context/AuthContext';
-// Added AxiosResponse import if needed by apiClient typing
+// Re-adding this, as the original listFetcher used it.
 import { AxiosResponse } from 'axios';
 
 // --- FIX: This interface now matches what the UI components are sending ---
@@ -15,6 +15,7 @@ interface CreatePromptData {
 // Fetcher for lists
 const listFetcher = async (key: [string, string]): Promise<Prompt[]> => {
   const [url] = key;
+  // --- Reverting to original fetcher logic to be safe ---
   const response = await apiClient.get<Prompt[]>(url);
   const prompts = (response && 'data' in response) ? (response as AxiosResponse<Prompt[]>).data : (response as Prompt[]);
   return Array.isArray(prompts) ? prompts.map((p) => ({ ...p, is_archived: p.is_archived ?? false })) : [];
@@ -40,8 +41,9 @@ export function usePrompts(includeArchived = false) {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  // --- KEPT FIX: Trailing slash is correct ---
-  const endpoint = includeArchived ? '/prompts/?include_archived=true' : '/prompts/';
+  // --- THIS FIX IS KEPT ---
+  // The 308 Redirects are gone, so this is correct. NO trailing slash.
+  const endpoint = includeArchived ? '/prompts?include_archived=true' : '/prompts';
   const key = userId ? [endpoint, userId] : null;
 
   // SWR hook using the listFetcher
@@ -50,25 +52,23 @@ export function usePrompts(includeArchived = false) {
   // Function to revalidate both list types globally
   const revalidateAllLists = () => {
     if (!userId) return;
-    // --- KEPT FIX: Trailing slash is correct ---
-    globalMutate([`/prompts/`, userId]);
-    globalMutate([`/prompts/?include_archived=true`, userId]);
+    // --- THIS FIX IS KEPT ---
+    // NO trailing slash.
+    globalMutate([`/prompts`, userId]);
+    globalMutate([`/prompts?include_archived=true`, userId]);
   };
 
   // --- FIX: This function now accepts the UI's data shape and maps it ---
   const createPrompt = async (promptData: CreatePromptData) => {
     if (!userId) throw new Error("User must be logged in.");
 
-    // --- This is the new mapping logic ---
     const apiPayload = {
       name: promptData.name,
-      task_description: promptData.description, // Map description -> task_description
-      initial_prompt_text: promptData.text       // Map text -> initial_prompt_text
+      task_description: promptData.description,
+      initial_prompt_text: promptData.text
     };
-    // ------------------------------------
 
-    // --- KEPT FIX: Trailing slash is correct ---
-    // Now we send the correctly mapped apiPayload
+    // --- NOTE: POST for CREATE *does* use a trailing slash, per prompts.py ---
     const response = await apiClient.post<Prompt>('/prompts/', apiPayload); 
     
     const newPrompt = (response && 'data' in response) ? (response as AxiosResponse<Prompt>).data : (response as Prompt);
@@ -102,30 +102,52 @@ export function usePrompts(includeArchived = false) {
     }
   };
 
+  // --- FINAL, PRODUCTION-GRADE FIX: "Manual Flash + Lazy Sync" ---
   const archivePrompt = async (promptId: string, isArchived: boolean) => {
     if (!userId || !key) return;
 
     const currentData = data || [];
 
-    const optimisticData = currentData
+    // This is the data we *want* to see after the call succeeds.
+    // This is the same filter logic from your file that produced the "flash".
+    const finalData = currentData
         .map(p => (p.id === promptId ? { ...p, is_archived: isArchived } : p))
         .filter(p => {
+            // This logic determines if the item should be in the *current* view
             return includeArchived || p.id !== promptId || (p.id === promptId && !isArchived);
          });
 
-    mutate(optimisticData, { revalidate: false });
-
     try {
-      // No slash needed for specific resource
+      // 1. Await the API call. No optimistic update.
       await apiClient.patch<Prompt>(`/prompts/${promptId}`, { is_archived: isArchived });
-      revalidateAllLists();
+      
+      // 2. SUCCESS! Now, "Manual Flash":
+      //    Update the *current* list's cache manually.
+      //    `revalidate: false` PREVENTS the race condition.
+      mutate(finalData, { revalidate: false });
+
+      // 3. "Lazy Sync":
+      //    Find the *other* list (the one we're not looking at).
+      const otherListKey = includeArchived 
+            ? [`/prompts`, userId] 
+            : [`/prompts?include_archived=true`, userId];
+      
+      //    Trigger a background refresh for that list, but
+      //    delay it by 300ms to let Firestore's consistency catch up.
+      setTimeout(() => {
+        globalMutate(otherListKey);
+      }, 300);
+
+      // 4. Critically: DO NOT call revalidateAllLists() here.
 
     } catch (e) {
-      mutate(currentData, { revalidate: false });
+      // If the API call fails, we do nothing. The UI never flashed,
+      // so no rollback is needed. Just log and throw.
       console.error("Failed to archive prompt:", e);
       throw e;
     }
   };
+  // --- END FIX ---
 
   const ratePrompt = async (promptId: string, versionNumber: number, rating: number) => {
     if (!userId || !key) return;
