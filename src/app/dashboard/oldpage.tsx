@@ -1,4 +1,3 @@
-// src/app/dashboard/page.tsx
 'use client';
 
 import { useState, Suspense, useMemo } from 'react';
@@ -84,7 +83,7 @@ const DashboardContent = () => {
     }
   };
 
-  // TEMPLATE HANDLERS (Unchanged)
+  // TEMPLATE HANDLERS
   const handleArchiveTemplate = (templateId: string, isArchived: boolean) => archiveTemplate(templateId, isArchived);
   const handleDeleteTemplate = (templateId: string) => {
     if (window.confirm('Are you sure you want to delete this template?')) {
@@ -94,19 +93,31 @@ const DashboardContent = () => {
   const handleCopyTemplate = (templateId: string) => {
     handleAction(copyTemplate(templateId), { loading: 'Copying...', success: 'Template copied!', error: 'Failed to copy.' });
   };
+
+  // FIXED: handleSendTemplateToLlm
   const handleSendTemplateToLlm = async (content: string, service: 'ChatGPT' | 'Gemini' | 'Grok') => {
-    const LLM_URLS = { ChatGPT: 'https://chat.openai.com', Gemini: 'https://gemini.google.com/app', Grok: 'https://grok.x.ai/' };
-    toast.loading(`Copying template...`);
+    const LLM_URLS = { 
+      ChatGPT: 'https://chat.openai.com', 
+      Gemini: 'https://gemini.google.com/app', 
+      Grok: 'https://grok.x.ai/' 
+    };
+
+    const toastId = toast.loading('Copying template...');
+
     try {
       await navigator.clipboard.writeText(content);
-      toast.success('Template copied! Opening new tab...');
-      window.open(LLM_URLS[service], '_blank');
+      toast.success('Template copied! Opening new tab...', { id: toastId });
+
+      setTimeout(() => {
+        window.open(LLM_URLS[service], '_blank');
+      }, 1500);
+
     } catch (err) {
-      toast.error('Failed to copy template content.');
+      toast.error('Failed to copy template content.', { id: toastId });
     }
   };
 
-  // PROMPT HANDLERS (Unchanged)
+  // PROMPT HANDLERS
   const handleArchivePrompt = (promptId: string, isArchived: boolean) => archivePrompt(promptId, isArchived);
   const handleDeletePrompt = (promptId: string) => {
     if (window.confirm('Are you sure you want to delete this prompt?')) {
@@ -192,10 +203,6 @@ const DashboardContent = () => {
                     <div className={`block w-14 h-8 rounded-full transition-colors ${showArchived ? 'bg-green-500' : 'bg-gray-700'}`}></div>
                     <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${showArchived ? 'translate-x-full' : ''}`}></div>
                   </div>
-                  {/*
-                    --- THIS IS THE FIX ---
-                    Changed '</L_label>' to '</label>'
-                  */}
                 </label>
               </div>
             </div>

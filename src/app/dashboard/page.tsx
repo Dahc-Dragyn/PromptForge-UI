@@ -70,7 +70,10 @@ const DashboardContent = () => {
     setCopiedPromptId(promptId);
     const toastId = toast.loading('Copying...');
     try {
-      const { data: versions } = await apiClient.get<PromptVersion[]>(`/prompts/${promptId}/versions/`);
+      // --- FIX: Removed trailing slash ---
+      const { data: versions } = await apiClient.get<PromptVersion[]>(`/prompts/${promptId}/versions`);
+      // ---------------------------------
+
       if (!versions || versions.length === 0) throw new Error("This prompt has no versions to copy.");
       const latestVersion = versions.sort((a, b) => b.version_number - a.version_number)[0];
       await navigator.clipboard.writeText(latestVersion.prompt_text);
