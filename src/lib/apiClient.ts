@@ -15,21 +15,21 @@ const apiClient = axios.create({
  * This solves the race condition on initial page load.
  */
 const getFreshToken = (): Promise<string | null> => {
-    return new Promise((resolve) => {
-        // If the user is already available, get the token immediately.
-        if (auth.currentUser) {
-            return auth.currentUser.getIdToken().then(resolve);
-        }
-        // Otherwise, wait for the authentication state to change.
-        const unsubscribe = auth.onAuthStateChanged(user => {
-            unsubscribe(); // Unsubscribe to prevent memory leaks
-            if (user) {
-                user.getIdToken().then(resolve);
-            } else {
-                resolve(null);
-            }
-        });
+  return new Promise((resolve) => {
+    // If the user is already available, get the token immediately.
+    if (auth.currentUser) {
+      return auth.currentUser.getIdToken().then(resolve);
+    }
+    // Otherwise, wait for the authentication state to change.
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      unsubscribe(); // Unsubscribe to prevent memory leaks
+      if (user) {
+        user.getIdToken().then(resolve);
+      } else {
+        resolve(null);
+      }
     });
+  });
 };
 
 // Axios interceptor to add the token to every request
@@ -46,8 +46,9 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Add a response interceptor for unified error handling if needed in the future
+// Add a response interceptor for unified error handling
 apiClient.interceptors.response.use(
+  // This is the key: we return response.data directly
   (response) => response.data,
   (error) => {
     // Handle specific errors like 401 Unauthorized, 403 Forbidden, etc.
