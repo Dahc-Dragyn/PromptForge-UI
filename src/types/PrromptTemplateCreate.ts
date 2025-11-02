@@ -12,8 +12,9 @@ export interface PromptTemplate {
     is_archived?: boolean;
 }
 
-// --- V-- THIS IS THE FIX --V ---
+// --- V-- THIS IS THE FIX (STEP 1 of 2) --V ---
 // Add the missing 'Create' type that matches the backend schema.
+// This is what the 'createTemplate' and 'copyTemplate' functions need.
 export interface PromptTemplateCreate {
     name: string;
     description: string;

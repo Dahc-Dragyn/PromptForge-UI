@@ -11,43 +11,44 @@ const listFetcher = async (key: [string, string]): Promise<PromptVersion[]> => {
   return Array.isArray(versions) ? versions : [];
 };
 
+/**
+ * Custom hook to fetch and manage prompt versions for a given promptId.
+ *
+ * @param promptId The ID of the prompt whose versions to fetch.
+ */
 export function usePromptVersions(promptId: string | null) {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  // Endpoint needs the trailing slash
-  const endpoint = `/prompts/${promptId}/versions/`;
+  // Key for SWR: only fetch if user and promptId are available
+  const endpoint = `/prompts/${promptId}/versions`;
   const key = user && promptId ? [endpoint, userId] : null;
 
-  // --- FIX: Corrected destructuring from 'D' and added types ---
   const { data, error, mutate } = useSWR<PromptVersion[]>(key, listFetcher);
 
-  // --- THIS IS THE FIX ---
-  // 1. The function signature now correctly accepts an object.
-  //    This will fix the ts(2345) error in EditPromptModal.tsx.
+  // The 'S' that caused the syntax error has been removed.
   const createVersion = async (versionData: { prompt_text: string; commit_message?: string }) => {
     if (!userId || !promptId) throw new Error('User or Prompt ID not available');
     
-    // 2. The payload (versionData) is now sent flat.
-    //    This will fix the 422 Unprocessable Entity error.
     const newVersion = await apiClient.post<PromptVersion>(
-        `/prompts/${promptId}/versions/`,
-        versionData // Pass the flat object directly
+      `/prompts/${promptId}/versions`,
+      versionData 
     );
-    // --- END FIX ---
 
-    // Revalidate this list
+    // Revalidate the current list of versions
     mutate(); 
-    // Also revalidate the parent prompt's detail to update its `latest_version_number`
+    
+    // Also revalidate other related data that might be affected
+    // 1. Revalidate the parent prompt's detail (to update its `latest_version_number`)
     globalMutate([`/prompts/${promptId}`, userId]);
-    // And revalidate the main prompt lists
+    // 2. Revalidate the main prompt lists
     globalMutate([`/prompts`, userId]);
     globalMutate([`/prompts?include_archived=true`, userId]);
 
     return newVersion;
   };
 
-  // --- FIX: Added explicit types for sort parameters ---
+  // Sort versions by version_number descending
   const versions = data ? data.sort((a: PromptVersion, b: PromptVersion) => b.version_number - a.version_number) : undefined;
 
   return {

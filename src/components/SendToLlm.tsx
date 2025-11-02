@@ -56,9 +56,17 @@ const SendToLlm = ({ promptId }: SendToLlmProps) => {
       const textToCopy = await fetchLatestPromptText();
 
       await navigator.clipboard.writeText(textToCopy);
-      
+
+      // --- START OF REQUESTED CHANGE ---
+      // Set toast message based on the service
+      const successMessage =
+        service === 'ChatGPT'
+          ? 'Copied! Opening ChatGPT (will auto-paste)...'
+          : 'Prompt has been copied to clickboard please paste into next tab.';
+
       // This should now correctly dismiss the loading toast
-      toast.success('Prompt copied! Opening new tab...', { id: toastId });
+      toast.success(successMessage, { id: toastId });
+      // --- END OF REQUESTED CHANGE ---
 
       setTimeout(() => {
         window.open(LLM_URLS[service], '_blank');

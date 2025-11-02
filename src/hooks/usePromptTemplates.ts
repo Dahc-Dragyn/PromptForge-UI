@@ -1,173 +1,139 @@
-import useSWR, { mutate as globalMutate } from 'swr';
-import { useAuth } from '@/context/AuthContext';
-import { PromptTemplate } from '@/types/template';
+// src/hooks/usePromptTemplates.ts
+'use client';
+
+import useSWR, { mutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
-// We don't need AxiosResponse because our interceptor handles .data
-// import { AxiosResponse } from 'axios';
+// --- V-- THIS IS THE FIX (STEP 2 of 2) --V ---
+import {
+    PromptTemplate,
+    PromptTemplateCreate, // Now we can import this
+} from '@/types/template';
+// --- ^-- END OF FIX --^ ---
+import toast from 'react-hot-toast';
 
-// Ensure CreateTemplateData matches what the form provides
-type CreateTemplateData = Omit<PromptTemplate, 'id' | 'created_at' | 'updated_at' | 'is_archived' | 'user_id' | 'version' | 'owner' | 'average_rating' | 'rating_count'>;
-type UpdateTemplateData = Partial<CreateTemplateData>;
+// This is the SWR fetcher
+const fetcher = (url: string) =>
+    apiClient.get<PromptTemplate[]>(url).then((res) => res as unknown as PromptTemplate[]);
 
-// --- Fetcher for lists ---
-const listFetcher = async (key: [string, string]): Promise<PromptTemplate[]> => {
-  const [url] = key;
-  // Our apiClient interceptor already returns response.data
-  const templates = await apiClient.get<PromptTemplate[]>(url);
-  return Array.isArray(templates) ? templates : [];
-};
+export function usePromptTemplates(includeArchived: boolean = false) {
+    const cacheKey = `/templates?include_archived=${includeArchived}`;
+    const { data, error, isLoading } = useSWR(cacheKey, fetcher, {
+        revalidateOnFocus: true, // Re-fetch on window focus
+    });
 
-// --- Fetcher for single template ---
-const singleFetcher = async (key: [string, string]): Promise<PromptTemplate | null> => {
-  const [url] = key;
-  try {
-    // Our apiClient interceptor already returns response.data
-    const template = await apiClient.get<PromptTemplate>(url);
-    return template;
-  } catch (error: any) {
-    if (error.response && error.response.status === 404) {
-      return null;
-    }
-    throw error;
-  }
-};
+    // Use the correct 'PromptTemplateCreate' type
+    const createTemplate = async (templateData: PromptTemplateCreate) => {
+        try {
+            const newTemplate = (await apiClient.post(
+                '/templates',
+                templateData
+            )) as unknown as PromptTemplate;
+            // Mutate the cache to add the new template immediately
+            mutate(cacheKey, (currentData: PromptTemplate[] = []) => [
+                newTemplate,
+                ...currentData,
+            ]);
+            return newTemplate;
+        } catch (err: any) {
+            console.error('Failed to create template:', err);
+            throw new Error('Failed to create template.');
+        }
+    };
 
-export function usePromptTemplates(includeArchived = false) {
-  const { user } = useAuth();
-  const userId = user?.uid;
+    const deleteTemplate = async (templateId: string) => {
+        try {
+            await apiClient.delete(`/templates/${templateId}`);
+            // Mutate the cache to remove the template
+            mutate(
+                cacheKey,
+                (currentData: PromptTemplate[] = []) =>
+                    currentData.filter((t) => t.id !== templateId),
+                false // Don't revalidate immediately
+            );
+        } catch (err: any) {
+            console.error('Failed to delete template:', err);
+            throw new Error('Failed to delete template.');
+        }
+    };
 
-  // --- THIS FIX IS KEPT ---
-  // The 308 Redirects are gone. This is correct.
-  const endpoint = includeArchived ? '/templates?include_archived=true' : '/templates';
-  const key = userId ? [endpoint, userId] : null;
+    const archiveTemplate = async (templateId: string, isArchived: boolean) => {
+        try {
+            const updateData = { is_archived: isArchived };
+            const updatedTemplate = (await apiClient.patch(
+                `/templates/${templateId}`,
+                updateData
+            )) as unknown as PromptTemplate;
 
-  // Use the listFetcher
-  const { data, error, mutate } = useSWR<PromptTemplate[]>(key, listFetcher);
+            // Update the cache
+            mutate(
+                cacheKey,
+                (currentData: PromptTemplate[] = []) =>
+                    currentData.map((t) =>
+                        t.id === templateId ? { ...t, is_archived: isArchived } : t
+                    ),
+                false // Don't revalidate immediately
+            );
+            return updatedTemplate;
+        } catch (err: any) {
+            console.error('Failed to archive template:', err);
+            throw new Error(
+                `Failed to ${isArchived ? 'archive' : 'unarchive'} template.`
+            );
+        }
+    };
 
-  const revalidateAllLists = () => {
-    if (!userId) return;
-    // --- THIS FIX IS KEPT ---
-    globalMutate([`/templates`, userId]);
-    globalMutate([`/templates?include_archived=true`, userId]);
-  };
+    // --- V-- THIS IS THE FIX (STEP 2 of 2) --V ---
+    const copyTemplate = async (templateId: string) => {
+        // The old implementation called a non-existent '/copy' endpoint.
+        // The correct logic is to GET the template's data and POST it to
+        // the create endpoint.
 
-  const createTemplate = async (templateData: CreateTemplateData) => {
-    // POST for CREATE *does* need a trailing slash, per templates.py
-    const newTemplate = await apiClient.post<PromptTemplate>('/templates/', templateData);
-    revalidateAllLists();
-    return newTemplate; // Interceptor returns data
-  };
+        try {
+            // 1. GET the data for the template we want to copy
+            const templateToCopy = (await apiClient.get(
+                `/templates/${templateId}`
+            )) as unknown as PromptTemplate;
 
-  const updateTemplate = async (templateId: string, templateData: UpdateTemplateData) => {
-    if (!userId) throw new Error('User not authenticated');
+            if (!templateToCopy) {
+                throw new Error('Template not found.');
+            }
 
-    // PATCH for a specific resource has NO trailing slash
-    const updatedTemplate = await apiClient.patch<PromptTemplate>(
-      `/templates/${templateId}`,
-      templateData
-    );
+            // 2. Create a new "Create" object based on its data
+            const newTemplateData: PromptTemplateCreate = {
+                name: `${templateToCopy.name} (Copy)`, // Append (Copy)
+                description: templateToCopy.description,
+                content: templateToCopy.content,
+                tags: templateToCopy.tags,
+            };
 
-    // Update the detail cache key (which also has NO slash)
-    globalMutate([`/templates/${templateId}`, userId], updatedTemplate, { revalidate: false });
+            // 3. POST to the standard create endpoint
+            const newTemplate = (await apiClient.post(
+                '/templates',
+                newTemplateData
+            )) as unknown as PromptTemplate;
 
-    revalidateAllLists();
-    return updatedTemplate; // Interceptor returns data
-  };
+            // 4. Mutate the cache to add the new template to the top
+            mutate(cacheKey, (currentData: PromptTemplate[] = []) => [
+                newTemplate,
+                ...currentData,
+            ]);
 
-  const deleteTemplate = async (templateId: string) => {
-    // DELETE for a specific resource has NO trailing slash
-    await apiClient.delete(`/templates/${templateId}`);
-    revalidateAllLists();
-  };
+            return newTemplate;
+        } catch (err: any) {
+            console.error('Failed to copy template:', err);
+            // Re-throw the error so the toast.promise in the UI can catch it
+            throw new Error(err.message || 'Failed to copy template.');
+        }
+    };
+    // --- ^-- END OF FIX --^ ---
 
-  // --- FINAL, PRODUCTION-GRADE FIX ---
-  const archiveTemplate = async (templateId: string, is_archived: boolean) => {
-    if (!userId || !key) throw new Error('User not authenticated');
-
-    const currentData = data || [];
-
-    // --- THIS IS THE FIX ---
-    // Using the same .map().filter() logic from the (working) usePrompts.ts
-    // My "simple" filter was broken.
-    const finalData = currentData
-        .map(t => (t.id === templateId ? { ...t, is_archived: is_archived } : t))
-        .filter(t => {
-            return includeArchived || t.id !== templateId || (t.id === templateId && !is_archived);
-         });
-    // --- END FIX ---
-
-    try {
-      // 1. Await the API call. (PATCH has NO trailing slash)
-      await apiClient.patch(`/templates/${templateId}`, { is_archived });
-
-      // 2. "Manual Flash": Update the *current* list's cache.
-      //    `revalidate: false` PREVENTS the race condition.
-      mutate(finalData, { revalidate: false });
-
-      // 3. "Lazy Sync": Find the *other* list (NO trailing slash).
-      const otherListKey = includeArchived 
-            ? [`/templates`, userId] // The non-archived list
-            : [`/templates?include_archived=true`, userId]; // The archived list
-      
-      //    Delay the background refresh to let Firestore settle.
-      setTimeout(() => {
-        globalMutate(otherListKey);
-      }, 300);
-
-    } catch (e) {
-      // If the API call fails, we rollback by mutating with the original data.
-      // (This is safer than your original code which just threw)
-      mutate(currentData, { revalidate: false });
-      console.error("Failed to archive template:", e);
-      throw e;
-    }
-  };
-  // --- END FIX ---
-
-  const copyTemplate = async (templateId: string) => {
-    if (!userId) throw new Error('User not authenticated');
-
-    // This is a custom action, it likely needs a trailing slash
-    // We'll leave this one alone for now as it's not the bug.
-    const newTemplate = await apiClient.post<PromptTemplate>(
-      `/templates/${templateId}/copy/`,
-      {}
-    );
-    revalidateAllLists();
-    return newTemplate; // Interceptor returns data
-  };
-
-  const templates = data ? data.map((t) => ({ ...t, is_archived: t.is_archived ?? false })) : undefined;
-
-  return {
-    templates,
-    isLoading: !error && !templates && !!userId,
-    isError: error,
-    createTemplate,
-    updateTemplate,
-    deleteTemplate,
-    archiveTemplate,
-    copyTemplate,
-    mutate,
-  };
-}
-
-// ----------------------------------------------------------------------
-
-export function useTemplateDetail(templateId: string | null) {
-  const { user } = useAuth();
-  const userId = user?.uid;
-
-  // Detail endpoint has NO trailing slash (This is correct)
-  const endpoint = `/templates/${templateId}`;
-  const key = templateId && userId ? [endpoint, userId] : null;
-
-  const { data, error, mutate } = useSWR<PromptTemplate | null>(key, singleFetcher);
-
-  return {
-    template: data,
-    isLoading: !error && !data && !!key,
-    isError: error,
-    mutate,
-  };
+    return {
+        templates: data,
+        isLoading,
+        isError: error,
+        createTemplate,
+        deleteTemplate,
+        archiveTemplate,
+        copyTemplate, // This function is now fixed
+    };
 }

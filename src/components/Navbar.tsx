@@ -1,105 +1,275 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { Fragment } from 'react';
+import { Disclosure, Menu, Transition } from '@headlessui/react';
+import {
+    Bars3Icon,
+    BellIcon,
+    XMarkIcon,
+    HomeIcon,
+    ChartPieIcon,
+    BeakerIcon,
+    CpuChipIcon,
+    BookOpenIcon,
+} from '@heroicons/react/24/outline';
 import { useAuth } from '@/context/AuthContext';
-import { MagnifyingGlassIcon } from '@heroicons/react/24/solid';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
-const Navbar = () => {
-  const { user, loading, logout } = useAuth(); // Use the logout function from context
-  const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+const navigation = [
+    {
+        name: 'Dashboard',
+        href: '/dashboard',
+        icon: HomeIcon,
+    },
+    {
+        name: 'Workflow Guide',
+        href: '/guide',
+        icon: BookOpenIcon,
+    },
+    {
+        name: 'Prompt Clinic',
+        href: '/analyze',
+        icon: ChartPieIcon,
+    },
+    {
+        name: 'Sandbox',
+        href: '/sandbox',
+        icon: BeakerIcon,
+    },
+    {
+        name: 'Benchmark',
+        href: '/benchmark',
+        icon: CpuChipIcon,
+    },
+];
 
-  useEffect(() => {
-    const history = localStorage.getItem('promptForgeSearchHistory');
-    if (history) {
-      setSearchHistory(JSON.parse(history));
+function classNames(...classes: string[]) {
+    return classes.filter(Boolean).join(' ');
+}
+
+export default function Navbar() {
+    const { user, logout } = useAuth();
+    const pathname = usePathname();
+
+    const handleSignOut = async () => {
+        await logout();
+        // Router will automatically redirect to /login via PrivateRoute
+    };
+
+    // Don't render the navbar on login/signup pages
+    if (pathname === '/login' || pathname === '/signup') {
+        return null;
     }
-  }, []);
 
-  const handleLogout = async () => {
-    try {
-      await logout(); // Using the context's logout is better
-      router.push('/login');
-    } catch (err) {
-      console.error('Logout failed:', err);
-    }
-  };
+    return (
+        <Disclosure as="nav" className="bg-gray-800">
+            {({ open }) => (
+                <>
+                    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                        <div className="flex h-16 items-center justify-between">
+                            <div className="flex items-center">
+                                {/* --- FIX: Logo and flex-shrink-0 div REMOVED --- */}
+                                <div className="hidden md:block">
+                                    {/* --- FIX: Removed ml-10, added smaller margin --- */}
+                                    <div className="ml-4 flex items-baseline space-x-4">
+                                        {navigation.map((item) => {
+                                            const isActive = pathname.startsWith(item.href);
+                                            return (
+                                                <Link
+                                                    key={item.name}
+                                                    href={item.href}
+                                                    className={classNames(
+                                                        isActive
+                                                            ? 'bg-gray-900 text-white'
+                                                            : 'text-gray-300 hover:bg-gray-700 hover:text-white',
+                                                        'rounded-md px-3 py-2 text-sm font-medium'
+                                                    )}
+                                                    aria-current={
+                                                        isActive ? 'page' : undefined
+                                                    }
+                                                >
+                                                    <item.icon
+                                                        className={classNames(
+                                                            isActive
+                                                                ? 'text-indigo-400'
+                                                                : 'text-gray-400 group-hover:text-gray-300',
+                                                            'mr-2 h-5 w-5 flex-shrink-0 inline-block'
+                                                        )}
+                                                        aria-hidden="true"
+                                                    />
+                                                    {item.name}
+                                                </Link>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmedQuery = searchQuery.trim();
-    if (trimmedQuery) {
-      const updatedHistory = [trimmedQuery, ...searchHistory];
-      const uniqueHistory = [...new Set(updatedHistory)].slice(0, 10);
-      setSearchHistory(uniqueHistory);
-      localStorage.setItem('promptForgeSearchHistory', JSON.stringify(uniqueHistory));
-      router.push(`/search?q=${encodeURIComponent(trimmedQuery)}`);
-    }
-  };
+                            {/* --- FIX: Grouped Profile dropdown and Mobile button --- */}
+                            <div className="flex items-center">
+                                <div className="hidden md:block">
+                                    <div className="ml-4 flex items-center md:ml-6">
+                                        {/* Profile dropdown */}
+                                        <Menu as="div" className="relative ml-3">
+                                            <div>
+                                                <Menu.Button className="relative flex max-w-xs items-center rounded-full bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800">
+                                                    <span className="absolute -inset-1.5" />
+                                                    <span className="sr-only">
+                                                        Open user menu
+                                                    </span>
+                                                    <img
+                                                        className="h-8 w-8 rounded-full"
+                                                        src={
+                                                            user?.photoURL ||
+                                                            `https://avatar.vercel.sh/${
+                                                                user?.email || 'default'
+                                                            }.svg`
+                                                        }
+                                                        alt=""
+                                                    />
+                                                </Menu.Button>
+                                            </div>
+                                            <Transition
+                                                as={Fragment}
+                                                enter="transition ease-out duration-100"
+                                                enterFrom="transform opacity-0 scale-95"
+                                                enterTo="transform opacity-100 scale-100"
+                                                leave="transition ease-in duration-75"
+                                                leaveFrom="transform opacity-100 scale-100"
+                                                leaveTo="transform opacity-0 scale-95"
+                                            >
+                                                <Menu.Items className="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                                                    <Menu.Item>
+                                                        <div className="block px-4 py-2 text-sm text-gray-700">
+                                                            {user?.email}
+                                                        </div>
+                                                    </Menu.Item>
+                                                    <Menu.Item>
+                                                        {({ active }) => (
+                                                            <a
+                                                                onClick={handleSignOut}
+                                                                className={classNames(
+                                                                    active
+                                                                        ? 'bg-gray-100'
+                                                                        : '',
+                                                                    'block px-4 py-2 text-sm text-gray-700 cursor-pointer'
+                                                                )}
+                                                            >
+                                                                Sign out
+                                                            </a>
+                                                        )}
+                                                    </Menu.Item>
+                                                </Menu.Items>
+                                            </Transition>
+                                        </Menu>
+                                    </div>
+                                </div>
+                                <div className="-mr-2 flex md:hidden">
+                                    {/* Mobile menu button */}
+                                    <Disclosure.Button className="relative inline-flex items-center justify-center rounded-md bg-gray-800 p-2 text-gray-400 hover:bg-gray-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-800">
+                                        <span className="absolute -inset-0.5" />
+                                        <span className="sr-only">
+                                            Open main menu
+                                        </span>
+                                        {open ? (
+                                            <XMarkIcon
+                                                className="block h-6 w-6"
+                                                aria-hidden="true"
+                                            />
+                                        ) : (
+                                            <Bars3Icon
+                                                className="block h-6 w-6"
+                                                aria-hidden="true"
+                                            />
+                                        )}
+                                    </Disclosure.Button>
+                                </div>
+                            </div>
+                            {/* --- End of FIX group --- */}
+                        </div>
+                    </div>
 
-  if (loading) {
-    // Provides a stable height during the loading state to prevent layout shift
-    return <nav className="h-[72px] bg-gray-800"></nav>;
-  }
-
-  return (
-    <nav className="flex justify-between items-center p-4 bg-gray-800 text-white">
-      <div className="flex items-center gap-8">
-        <Link href={user ? "/dashboard" : "/"} className="text-xl font-bold">
-            PromptForge
-        </Link>
-        {user && (
-            <div className="hidden md:flex items-center gap-4">
-                 <Link href="/dashboard" className="text-sm hover:underline">Dashboard</Link>
-                 <Link href="/clinic" className="text-sm hover:underline text-rose-300 font-semibold">Clinic</Link>
-                 <Link href="/analyze" className="text-sm hover:underline">Analyze</Link>
-                 <Link href="/sandbox" className="text-sm hover:underline">Sandbox</Link>
-            </div>
-        )}
-      </div>
-      <div>
-        {user ? (
-          <div className="flex items-center space-x-4">
-            {/* --- THIS IS THE NEW LINE TO DISPLAY THE USER'S EMAIL --- */}
-            <span className="text-gray-300 text-sm hidden lg:block">Hello, {user.email}</span>
-            <form onSubmit={handleSearchSubmit} className="relative">
-                <input
-                    type="search"
-                    placeholder="Search prompts"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="py-1.5 pl-3 pr-8 text-sm rounded-md bg-gray-700 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    list="search-history"
-                    name="q"
-                />
-                <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
-                    <MagnifyingGlassIcon className="h-4 w-4" />
-                </button>
-            </form>
-            <datalist id="search-history">
-              {searchHistory.map(item => (
-                <option key={item} value={item} />
-              ))}
-            </datalist>
-            <button
-              onClick={handleLogout}
-              className="px-3 py-1.5 bg-red-600 rounded-md hover:bg-red-700 transition-colors text-sm font-semibold"
-            >
-              Log Out
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center space-x-4">
-            <Link href="/login" className="hover:underline">Login</Link>
-            <Link href="/signup" className="hover:underline">Sign Up</Link>
-          </div>
-        )}
-      </div>
-    </nav>
-  );
-};
-
-export default Navbar;
+                    <Disclosure.Panel className="md:hidden">
+                        <div className="space-y-1 px-2 pb-3 pt-2 sm:px-3">
+                            {/* --- FIX: Added mobile logo link --- */}
+                            <Disclosure.Button
+                                as={Link}
+                                href="/dashboard"
+                                className="group flex items-center rounded-md px-3 py-2 text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+                            >
+                                <img
+                                    className="h-8 w-8 mr-3"
+                                    src="/globe.svg"
+                                    alt="PromptForge"
+                                />
+                                PromptForge
+                            </Disclosure.Button>
+                            {navigation.map((item) => {
+                                const isActive = pathname.startsWith(item.href);
+                                return (
+                                    <Disclosure.Button
+                                        key={item.name}
+                                        as={Link}
+                                        href={item.href}
+                                        className={classNames(
+                                            isActive
+                                                ? 'bg-gray-900 text-white'
+                                                : 'text-gray-300 hover:bg-gray-700 hover:text-white',
+                                            'group flex items-center rounded-md px-3 py-2 text-base font-medium'
+                                        )}
+                                        aria-current={isActive ? 'page' : undefined}
+                                    >
+                                        <item.icon
+                                            className={classNames(
+                                                isActive
+                                                    ? 'text-indigo-400'
+                                                    : 'text-gray-400 group-hover:text-gray-300',
+                                                'mr-3 h-6 w-6 flex-shrink-0'
+                                            )}
+                                            aria-hidden="true"
+                                        />
+                                        {item.name}
+                                    </Disclosure.Button>
+                                );
+                            })}
+                        </div>
+                        <div className="border-t border-gray-700 pb-3 pt-4">
+                            <div className="flex items-center px-5">
+                                <div className="flex-shrink-0">
+                                    <img
+                                        className="h-10 w-10 rounded-full"
+                                        src={
+                                            user?.photoURL ||
+                                            `https://avatar.vercel.sh/${
+                                                user?.email || 'default'
+                                            }.svg`
+                                        }
+                                        alt=""
+                                    />
+                                </div>
+                                <div className="ml-3">
+                                    <div className="text-base font-medium leading-none text-white">
+                                        {user?.displayName || 'User'}
+                                    </div>
+                                    <div className="text-sm font-medium leading-none text-gray-400">
+                                        {user?.email}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-3 space-y-1 px-2">
+                                <Disclosure.Button
+                                    as="a"
+                                    onClick={handleSignOut}
+                                    className="block rounded-md px-3 py-2 text-base font-medium text-gray-400 hover:bg-gray-700 hover:text-white cursor-pointer"
+                                >
+                                    Sign out
+                                </Disclosure.Button>
+                            </div>
+                        </div>
+                    </Disclosure.Panel>
+                </>
+            )}
+        </Disclosure>
+    );
+}
