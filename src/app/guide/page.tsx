@@ -1,19 +1,16 @@
 'use client';
 
-import Link from 'next/link';
 import {
-    BookOpenIcon,
-    SparklesIcon,
-    BeakerIcon,
-    CpuChipIcon,
-    RectangleGroupIcon,
-    ArchiveBoxIcon,
-    ClipboardDocumentListIcon,
-    VariableIcon,
-    WrenchScrewdriverIcon,
-    CheckBadgeIcon,
-    KeyIcon,
-    CircleStackIcon,
+    BookOpenIcon, // Workflow Guide
+    SparklesIcon, // Auto-Optimize / Automatic Composer
+    BeakerIcon, // Sandbox
+    CpuChipIcon, // Benchmark
+    RectangleGroupIcon, // Manual Composer
+    ArchiveBoxIcon, // Template Library
+    ClipboardDocumentListIcon, // AI Template Search
+    ChartPieIcon, // Prompt Clinic (Matches Navbar)
+    KeyIcon, // API Key Management
+    CircleStackIcon, // Visual Agent Optimizer
 } from '@heroicons/react/24/outline';
 
 const GuidePage = () => {
@@ -43,53 +40,108 @@ const GuidePage = () => {
                 <div className="space-y-6">
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
+                            {/* ArchiveBoxIcon for storing pieces (Templates) */}
                             <ArchiveBoxIcon className="h-6 w-6" />
-                            Template Library
+                            Template Library: Your Reusable Prompt Pieces
                         </h3>
                         <p className="text-gray-300">
-                            This is your library of reusable prompt components.
-                            Instead of re-typing your persona or rules every
-                            time, save it here.
+                            <strong>What it is:</strong> This is your personal
+                            toolbox for prompt "pieces." Instead of re-typing the
+                            same persona, task, or style rules every time, you
+                            save them here.
                         </p>
                         <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it maps:</strong> Use templates to define
-                            reusable{' '}
-                            <strong>`Context`</strong>,{' '}
-                            <strong>`Persona`</strong>, or{' '}
-                            <strong>`Style/Tone`</strong>.
+                            <strong>How it Works:</strong> When you create a
+                            template, you save a block of text and give it a
+                            type: <strong>`Persona`</strong> (e.g., "You are a
+                            senior copywriter"), <strong>`Task`</strong> (e.g.,
+                            "Write a blog post intro"), or{' '}
+                            <strong>`Style`</strong> (e.g., "Format the output as
+                            a JSON object"). These are the building blocks for
+                            the Manual Composer.
                         </p>
-                        {/* --- V-- FIX 1: Link now points to the dashboard anchor --V --- */}
-                        <Link
+                        <a
                             href="/dashboard#template-library"
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
                             Go to your Templates &rarr;
-                        </Link>
-                        {/* --- ^-- END OF FIX --^ --- */}
+                        </a>
                     </div>
+
+                    <p className="text-lg text-gray-300 mb-2 mt-4 text-center">
+                        The Dashboard gives you <strong>two ways</strong> to
+                        build a complete prompt:
+                    </p>
 
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
+                            {/* RectangleGroupIcon for manual, structured composition */}
                             <RectangleGroupIcon className="h-6 w-6" />
-                            Prompt Composer
+                            Prompt Composer (Manual - The "Pro Mode")
                         </h3>
-                        <p className="text-gray-300">
-                            Found on the Dashboard, this tool lets you mix
-                            templates, instructions, and variables to build a
-                            complete prompt.
+                        <p className="text-gray-300 mb-4">
+                            <strong>What it is:</strong> This tool gives you
+                            full, step-by-step control. You build a prompt by
+                            "stacking" your saved templates and adding custom
+                            instructions.
                         </p>
-                        <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it maps:</strong> This is where you combine
-                            your <strong>`Context`</strong> (from a template)
-                            with your <strong>`Task/Instruction`</strong> and
-                            test <strong>`Input`</strong> variables.
-                        </p>
-                        <Link
-                            href="/dashboard#prompt-composer"
+                        <div className="text-sm text-gray-400">
+                            <strong>How to Use it (Step-by-Step):</strong>
+                            <ol className="list-decimal list-outside space-y-2 pl-5 mt-2 text-gray-300">
+                                <li>
+                                    <strong>Select Templates:</strong> Use the
+                                    dropdowns to select your saved{' '}
+                                    <strong>`Persona`</strong>,{' '}
+                                    <strong>`Task`</strong>, and{' '}
+                                    <strong>`Style`</strong> templates.
+                                </li>
+                                <li>
+                                    <strong>Add Instructions:</strong> Type any
+                                    extra details, input text, or specific rules
+                                    into the "Additional Instructions" text box.
+                                </li>
+                                <li>
+                                    <strong>Run & Test:</strong> The tool combines
+                                    all these text blocks into one large prompt
+                                    and sends it to the AI for you to see the
+                                    result.
+                                </li>
+                            </ol>
+                        </div>
+                        <a
+                            href="/dashboard" // Assumes Manual Composer is on the main dashboard
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
                             Go to the Composer &rarr;
-                        </Link>
+                        </a>
+                    </div>
+
+                    {/* --- FIX: Updated Automatic Composer description --- */}
+                    <div className="bg-gray-800 p-6 rounded-lg">
+                        <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
+                            {/* SparklesIcon for AI/Automatic functionality */}
+                            <SparklesIcon className="h-6 w-6" />
+                            AI-Assisted Template Creation (The "Easy Mode")
+                        </h3>
+                        <p className="text-gray-300">
+                            <strong>What it is:</strong> This tool uses AI to
+                            help you create new, high-quality templates *for* your
+                            library. You just give it a simple goal.
+                        </p>
+                        <p className="text-sm text-gray-400 mt-2">
+                            <strong>How it Works:</strong> You type a simple
+                            description (e.g., "A persona for a skeptical
+                            pirate") and add tags. The AI will then{' '}
+                            <strong>generate and save</strong> a new, detailed
+                            template for you, which you can immediately use in
+                            the Manual Composer.
+                        </p>
+                        <a
+                            href="/dashboard" // Assumes AI Composer is also on the dashboard
+                            className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
+                        >
+                            Go to the Composer &rarr;
+                        </a>
                     </div>
                 </div>
 
@@ -103,53 +155,56 @@ const GuidePage = () => {
                 </p>
 
                 <div className="space-y-6">
+                    {/* --- FIX: Merged "Auto-Optimize" into "Diagnose" --- */}
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            <WrenchScrewdriverIcon className="h-6 w-6" />
-                            Prompt Clinic: Diagnose & Refine
+                            {/* CHANGED: Using ChartPieIcon to match Navbar's Prompt Clinic icon */}
+                            <ChartPieIcon className="h-6 w-6" />
+                            Prompt Clinic (Diagnose & Auto-Optimize)
                         </h3>
-                        <p className="text-gray-300">
-                            This tool acts like a "linter" for your prompt,
-                            checking it against known best practices.
+                        <p className="text-gray-300 mb-4">
+                            <strong>What it is:</strong> Think of this as a
+                            "spell-check" for your prompt's quality. It reads
+                            your prompt, gives you a score, and provides an
+                            AI-generated improvement.
                         </p>
-                        <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it maps:</strong> Enforces the "Be
-                            Explicit and Detailed" principle by scoring your
-                            prompt on <strong>Clarity</strong>,{' '}
-                            <strong>Specificity</strong>, and{' '}
-                            <strong>Constraints</strong>.
-                        </p>
-                        <Link
-                            href="/analyze"
+                        <div className="text-sm text-gray-400">
+                            <strong>How it Works:</strong> It grades your prompt
+                            on a few key areas:
+                            <ul className="list-disc list-outside space-y-2 pl-5 mt-2 text-gray-300">
+                                <li>
+                                    <strong>Clarity:</strong> Is your request
+                                    easy to understand, or is it vague?
+                                </li>
+                                <li>
+                                    <strong>Specificity:</strong> Did you give
+                                    enough detail? (e.g., "Write 3 paragraphs"
+                                    is better than "Write about this.")
+                                </li>
+                                <li>
+                                    <strong>Constraints:</strong> Did you set
+                                    clear rules? (e.g., "Do not use technical
+                                    jargon.")
+                                </li>
+                            </ul>
+                            <p className="text-gray-300 mt-3 font-semibold">
+                                The "Auto-Optimize" Feature:
+                            </p>
+                            <p className="text-gray-300 mt-1">
+                                The clinic doesn't just give you a report. It
+                                also provides a <strong>"Suggested
+                                Improvement"</strong>—an "easy button" rewrite
+                                of your prompt. You can then save this new
+                                version or send it directly to the Sandbox to
+                                A/B test it against your original.
+                            </p>
+                        </div>
+                        <a
+                            href="/clinic"
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
                             Go to the Prompt Clinic &rarr;
-                        </Link>
-                    </div>
-
-                    <div className="bg-gray-800 p-6 rounded-lg">
-                        <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            <SparklesIcon className="h-6 w-6" />
-                            Prompt Clinic: Auto-Optimize (APE)
-                        </h3>
-                        <p className="text-gray-300">
-                            This is your automated prompt engineer. It uses an
-                            LLM to rewrite your simple idea into a
-                            high-performance prompt.
-                        </p>
-                        <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it maps:</strong> Automates "Provide
-                            Examples (Few-Shot)" and "Specify Output Format" by
-                            generating them for you.
-                        </p>
-                        {/* --- V-- FIX 2: Link now passes query param to select the tab --V --- */}
-                        <Link
-                            href="/analyze?tool=optimize"
-                            className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
-                        >
-                            Go to the Prompt Clinic &rarr;
-                        </Link>
-                        {/* --- ^-- END OF FIX --^ --- */}
+                        </a>
                     </div>
                 </div>
 
@@ -165,46 +220,54 @@ const GuidePage = () => {
                 <div className="space-y-6">
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
+                            {/* BeakerIcon for Sandbox (A/B Testing) */}
                             <BeakerIcon className="h-6 w-6" />
-                            Sandbox
+                            Sandbox (A/B Testing)
                         </h3>
                         <p className="text-gray-300">
-                            A side-by-side A/B testing tool. Compare two or more
-                            prompt variations against the same model and input.
+                            <strong>Use this to answer:</strong> "Is my new
+                            prompt <em>really</em> better than my old one?"
                         </p>
                         <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it maps:</strong> Allows you to test for
-                            **Accuracy**. Is your new prompt *better* than your
-                            old one?
+                            <strong>How it Works:</strong> It lets you load two
+                            (or more) prompts side-by-side with the{' '}
+                            <em>same</em> input. You can directly compare the
+                            AI's answers to see which prompt performed better.
                         </p>
-                        <Link
+                        <a
                             href="/sandbox"
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
                             Go to the Sandbox &rarr;
-                        </Link>
+                        </a>
                     </div>
 
+                    {/* --- FIX: Removed "cost-effective" and "cheapest" --- */}
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
+                            {/* CpuChipIcon for Benchmark (Model Testing) */}
                             <CpuChipIcon className="h-6 w-6" />
-                            Benchmark
+                            Benchmark (Model Testing)
                         </h3>
                         <p className="text-gray-300">
-                            Test one prompt against multiple LLM models at the
-                            same time.
+                            <strong>Use this to answer:</strong> "Which model is
+                            the most <strong>performant</strong> for my prompt?"
                         </p>
                         <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it maps:</strong> Allows you to test for
-                            **Robustness**. Does your prompt work well on both
-                            Gemini and GPT, or is it overfitted to one?
+                            <strong>How it Works:</strong> You write{' '}
+                            <em>one</em> prompt and run it against multiple
+                            different models (like Gemini, GPT-4o Mini, etc.)
+                            all at the same time. This is the perfect way to
+                            find the <strong>fastest</strong> model that gives
+                            you the high-quality result you need by comparing
+                            their latency and output.
                         </p>
-                        <Link
+                        <a
                             href="/benchmark"
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
                             Go to Benchmark &rarr;
-                        </Link>
+                        </a>
                     </div>
                 </div>
 
@@ -220,6 +283,7 @@ const GuidePage = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
+                            {/* ClipboardDocumentListIcon for search/list function */}
                             <ClipboardDocumentListIcon className="h-6 w-6" />
                             AI Template Search
                             <span className="bg-yellow-600 text-yellow-50 text-xs font-bold px-2 py-0.5 rounded-full">
@@ -234,6 +298,7 @@ const GuidePage = () => {
 
                     <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
+                            {/* KeyIcon for API Key Management */}
                             <KeyIcon className="h-6 w-6" />
                             User API Key Management
                             <span className="bg-yellow-600 text-yellow-50 text-xs font-bold px-2 py-0.5 rounded-full">
@@ -248,6 +313,7 @@ const GuidePage = () => {
 
                     <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700 md:col-span-2">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
+                            {/* CircleStackIcon for complex, visual optimization */}
                             <CircleStackIcon className="h-6 w-6" />
                             Visual Agent Optimizer
                             <span className="bg-yellow-600 text-yellow-50 text-xs font-bold px-2 py-0.5 rounded-full">
