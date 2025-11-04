@@ -6,66 +6,14 @@ import toast from 'react-hot-toast';
 import SaveTemplatesModal from './SaveTemplatesModal';
 import { apiClient } from '@/lib/apiClient';
 import AutoSizingTextarea from './AutoSizingTextarea';
-// We DO NOT need AxiosResponse. This was my mistake.
 
 export const AI_MODEL = 'gemini-2.5-flash-lite';
-
-// --- THIS IS THE FINAL FIX (Part 1): A hyper-aggressive meta-prompt ---
-// We are using XML tags to force the AI to focus.
-export const META_PROMPT_BASE = `
-<SYSTEM_TASK>
-You are a raw text generator. Your only task is to generate the raw text for a prompt component based on the user's goal.
-Your response MUST NOT contain any conversational text, introductions, or preambles.
-Your response MUST NOT include "Sure", "Certainly", "Here is", "I can help", "Please provide", "persona", or "task".
-Your response MUST begin with the first word of the generated text itself.
-Do not use markdown or quotes.
-</SYSTEM_TASK>
-<USER_GOAL>
-`;
-// --- END OF FIX (Part 1) ---
+export const META_PROMPT_BASE = `Based on the user's goal, generate a concise component. Crucially, do not include any preamble, introduction, or conversational text like "Certainly, here is...". Output ONLY the text for the component itself.`;
 
 interface AiAssistantProps {
     onAiComponentsGenerated: (persona: string, task: string) => void;
     onReset: () => void;
 }
-
-// --- THIS IS THE FINAL FIX (Part 2): A much stricter cleaning function ---
-/**
- * Cleans the raw text output from the LLM.
- * Strips common prefixes, markdown, and conversational fluff.
- */
-const cleanAiOutput = (text: string | undefined | null): string => {
-    if (!text) return '';
-
-    let cleanedText = text;
-
-    // Remove common conversational preambles (case-insensitive, multiline)
-    const preambles = [
-        /^sure, i can help with that!/ims,
-        /^sure, here is the component:/ims,
-        /^here is the component:/ims,
-        /^here's the persona:/ims,
-        /^here's the task:/ims,
-        /^certainly, here is.../ims,
-        /^persona\s*=\s*/ims,
-        /^task\s*=\s*/ims,
-        // Add the response from the test log
-        /^Sure, I can help with that! Please provide the CMOS sentence[\s\S]*/i
-    ];
-    
-    preambles.forEach(preamble => {
-        cleanedText = cleanedText.replace(preamble, '');
-    });
-
-    // Remove markdown code blocks
-    cleanedText = cleanedText.replace(/```(json|text)?/g, '');
-    cleanedText = cleanedText.replace(/```/g, '');
-
-    // Final trim to remove whitespace and newlines from the start/end
-    return cleanedText.trim();
-};
-// --- END OF FIX (Part 2) ---
-
 
 const AiAssistant: React.FC<AiAssistantProps> = ({ onAiComponentsGenerated, onReset }) => {
     const [recommendationGoal, setRecommendationGoal] = useState('');
@@ -88,70 +36,35 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ onAiComponentsGenerated, onRe
         setShowSuggestionUI(false);
         const toastId = toast.loading('Generating AI components...');
         try {
-            // Construct the full prompts with the new, stricter base
-            const goalPrompt = `${META_PROMPT_BASE}"${recommendationGoal}"</USER_GOAL>`;
-            
-            // Add specific instructions for each component
-            const personaMetaPrompt = `${goalPrompt}\n[INSTRUCTION]Generate the "persona" text based on the user goal.[/INSTRUCTION]`;
-            const taskMetaPrompt = `${goalPrompt}\n[INSTRUCTION]Generate the "task" text based on the user goal. This should be a human-readable paragraph.[/INSTRUCTION]`;
-            const nameMetaPrompt = `Based on the goal "${recommendationGoal}", generate a short 3-5 word title. Do not use quotes or conversational text.`;
-
-            const executePayload = (prompt_text: string) => ({ prompt_text, model: AI_MODEL });
-            
-            // --- Define the expected response type ---
-            type AiExecuteResponse = { final_text: string };
-
-            // --- Our apiClient returns the data directly, not the full AxiosResponse ---
-            const personaPromise = apiClient.post<AiExecuteResponse>('/prompts/execute', executePayload(personaMetaPrompt));
-            const taskPromise = apiClient.post<AiExecuteResponse>('/prompts/execute', executePayload(taskMetaPrompt));
-            const namePromise = apiClient.post<AiExecuteResponse>('/prompts/execute', executePayload(nameMetaPrompt));
-            
-            // --- THIS IS THE FIX: The results are the data objects, not AxiosResponse ---
-            const [personaRes, taskRes, nameRes] = await Promise.all([
-                personaPromise, 
-                taskPromise, 
-                namePromise
-            ]);
+          const goalMetaPrompt = `${META_PROMPT_BASE} The user's goal is: "${recommendationGoal}"`;
+          const executePayload = (prompt_text: string) => ({ prompt_text, model: AI_MODEL });
+          
+          const personaPromise = apiClient.post<{ final_text: string }>('/prompts/execute', executePayload(`${goalMetaPrompt} The component is a "persona" for an AI assistant.`));
+          const taskPromise = apiClient.post<{ final_text: string }>('/prompts/execute', executePayload(`${goalMetaPrompt} The component is a "task" for an AI assistant. This should be a human-readable paragraph describing what the AI should do. Do not use JSON or any other structured format.`));
+          const namePromise = apiClient.post<{ final_text: string }>('/prompts/execute', executePayload(`Based on the goal "${recommendationGoal}", generate a short 3-5 word title. No quotes.`));
+          
+          // --- FIX: Corrected the typo in the array below ---
+          const [personaRes, taskRes, nameRes] = await Promise.all([personaPromise, taskPromise, namePromise]);
     
-            // --- THIS IS THE FIX: Access final_text directly (like your original code) ---
-            // --- and run it through our new, aggressive cleaning function ---
-            const generatedPersona = cleanAiOutput(personaRes.final_text);
-            const generatedTask = cleanAiOutput(taskRes.final_text);
-            const generatedName = cleanAiOutput(nameRes.final_text)?.replace(/"/g, '') || 'AI Generated';
-            // --- END OF FIX ---
+          const generatedPersona = personaRes.final_text?.trim();
+          const generatedTask = taskRes.final_text?.trim();
+          const generatedName = nameRes.final_text?.trim().replace(/"/g, '') || 'AI Generated';
     
-            // This check catches the conversational AI *after* cleaning
-            if (!generatedPersona || !generatedTask) {
-                console.error("AI returned empty response after cleaning. Persona:", generatedPersona, "Task:", generatedTask);
-                throw new Error("AI returned a conversational or empty response. Please try again.");
-            }
+          if (!generatedPersona || !generatedTask) {
+              throw new Error("AI returned an empty response.");
+          }
     
-            setAiSuggestedPersona(generatedPersona);
-            setAiSuggestedTask(generatedTask);
-            setNewPersonaName(`${generatedName} - Persona`);
-            setNewTaskName(`${generatedName} - Task`);
-            setShowSuggestionUI(true);
-            toast.success('AI components generated!', { id: toastId });
+          setAiSuggestedPersona(generatedPersona);
+          setAiSuggestedTask(generatedTask);
+          setNewPersonaName(`${generatedName} - Persona`);
+          setNewTaskName(`${generatedName} - Task`);
+          setShowSuggestionUI(true);
+          toast.success('AI components generated!', { id: toastId });
         } catch (err: unknown) {
-            console.error("AI Generation Failed:", err);
-            
-            let errorMessage = 'An unknown error occurred.';
-            if (err instanceof Error) {
-                errorMessage = err.message;
-            }
-
-            // Check if this is an Axios error with a response from our backend
-            if (err && (err as any).response?.data?.detail) {
-                errorMessage = (err as any).response.data.detail;
-            } else if (err && (err as any).message) {
-                 // Handle runtime errors like the 'undefined' property access
-                errorMessage = (err as any).message;
-            }
-
-            toast.error(errorMessage, { id: toastId, duration: 5000 });
-
+          const errorMessage = err instanceof Error ? err.message : 'AI Generation Failed';
+          toast.error(errorMessage, { id: toastId });
         } finally {
-            setIsRecommending(false);
+          setIsRecommending(false);
         }
     };
     

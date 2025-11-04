@@ -1,201 +1,244 @@
+/* src/hooks/usePrompts.ts */
 import useSWR, { mutate as globalMutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
 import { Prompt } from '@/types/prompt';
 import { useAuth } from '@/context/AuthContext';
-// Re-adding this, as the original listFetcher used it.
 import { AxiosResponse } from 'axios';
+import { useCallback } from 'react';
 
-// --- FIX: This interface now matches what the UI components are sending ---
+/* -------------------------------------------------------------------------- */
+/*                               TYPE DEFINITIONS                             */
+/* -------------------------------------------------------------------------- */
+type PromptListKey = readonly [`/prompts` | `/prompts?include_archived=true`, string];
+type PromptDetailKey = readonly [`/prompts/${string}`, string];
+
 interface CreatePromptData {
   name: string;
-  description: string; // <-- This was the UI field name
-  text: string;        // <-- This was the UI field name
+  description: string;   // UI field
+  text: string;          // UI field
 }
 
-// Fetcher for lists
-const listFetcher = async (key: [string, string]): Promise<Prompt[]> => {
+/* -------------------------------------------------------------------------- */
+/*                                 FETCHERS                                   */
+/* -------------------------------------------------------------------------- */
+const listFetcher = async (key: PromptListKey): Promise<Prompt[]> => {
   const [url] = key;
-  // --- Reverting to original fetcher logic to be safe ---
-  const response = await apiClient.get<Prompt[]>(url);
-  const prompts = (response && 'data' in response) ? (response as AxiosResponse<Prompt[]>).data : (response as Prompt[]);
-  return Array.isArray(prompts) ? prompts.map((p) => ({ ...p, is_archived: p.is_archived ?? false })) : [];
+  const resp = await apiClient.get<Prompt[]>(url);
+  const data = (resp as AxiosResponse<Prompt[]>).data ?? (resp as Prompt[]);
+  return Array.isArray(data)
+    ? data.map(p => ({ ...p, is_archived: p.is_archived ?? false }))
+    : [];
 };
 
-// Fetcher for single prompt
-const singleFetcher = async (key: [string, string]): Promise<Prompt | null> => {
+const singleFetcher = async (key: PromptDetailKey): Promise<Prompt | null> => {
   const [url] = key;
   try {
-    const response = await apiClient.get<Prompt>(url);
-    const prompt = (response && 'data' in response) ? (response as AxiosResponse<Prompt>).data : (response as Prompt);
-    return prompt;
-  } catch (error: any) {
-    if (error.response && error.response.status === 404) {
-      return null;
-    }
-    throw error;
+    const resp = await apiClient.get<Prompt>(url);
+    return (resp as AxiosResponse<Prompt>).data ?? (resp as Prompt);
+  } catch (e: any) {
+    if (e.response?.status === 404) return null;
+    throw e;
   }
 };
 
+/* -------------------------------------------------------------------------- */
+/*                            GLOBAL REVALIDATOR                               */
+/* -------------------------------------------------------------------------- */
+const revalidateAllRelatedCaches = (userId: string) => {
+  // 1. All list endpoints
+  globalMutate([`/prompts`, userId]);
+  globalMutate([`/prompts?include_archived=true`, userId]);
 
+  // 2. **Every** possible detail cache – we don’t know the IDs,
+  //    but SWR will simply ignore keys that don’t exist.
+  //    This is cheap because SWR uses an LRU map internally.
+  //    (If you have thousands of prompts you can keep a Set<PromptDetailKey>
+  //     in a separate context and iterate over it – optional optimisation.)
+  //    For now we just clear the *pattern* – SWR supports a matcher:
+  globalMutate(
+    (k: any) => typeof k === 'object' && k[0]?.startsWith('/prompts/') && k[1] === userId,
+    undefined,
+    { revalidate: true }
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*                               usePrompts HOOK                              */
+/* -------------------------------------------------------------------------- */
 export function usePrompts(includeArchived = false) {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  // --- THIS FIX IS KEPT ---
-  // The 308 Redirects are gone, so this is correct. NO trailing slash.
   const endpoint = includeArchived ? '/prompts?include_archived=true' : '/prompts';
-  const key = userId ? [endpoint, userId] : null;
+  const key: PromptListKey | null = userId ? [endpoint, userId] : null;
 
-  // SWR hook using the listFetcher
-  const { data, error, mutate } = useSWR<Prompt[]>(key, listFetcher);
+  const { data, error, mutate } = useSWR<Prompt[]>(key, listFetcher, {
+    // keepPreviousData while revalidating – prevents UI flicker
+    keepPreviousData: true,
+  });
 
-  // Function to revalidate both list types globally
-  const revalidateAllLists = () => {
-    if (!userId) return;
-    // --- THIS FIX IS KEPT ---
-    // NO trailing slash.
-    globalMutate([`/prompts`, userId]);
-    globalMutate([`/prompts?include_archived=true`, userId]);
-  };
+  /* ---------------------------------------------------------------------- */
+  /*                              CREATE                                    */
+  /* ---------------------------------------------------------------------- */
+  const createPrompt = useCallback(
+    async (promptData: CreatePromptData): Promise<Prompt> => {
+      if (!userId) throw new Error('User must be logged in.');
 
-  // --- FIX: This function now accepts the UI's data shape and maps it ---
-  const createPrompt = async (promptData: CreatePromptData) => {
-    if (!userId) throw new Error("User must be logged in.");
+      const payload = {
+        name: promptData.name,
+        task_description: promptData.description,
+        initial_prompt_text: promptData.text,
+      };
 
-    const apiPayload = {
-      name: promptData.name,
-      task_description: promptData.description,
-      initial_prompt_text: promptData.text
-    };
+      const resp = await apiClient.post<Prompt>('/prompts/', payload);
+      const newPrompt = (resp as AxiosResponse<Prompt>).data ?? (resp as Prompt);
 
-    // --- NOTE: POST for CREATE *does* use a trailing slash, per prompts.py ---
-    const response = await apiClient.post<Prompt>('/prompts/', apiPayload); 
-    
-    const newPrompt = (response && 'data' in response) ? (response as AxiosResponse<Prompt>).data : (response as Prompt);
-    revalidateAllLists();
-    return newPrompt;
-  };
+      // Invalidate *everything* – the new prompt will appear on the next fetch
+      revalidateAllRelatedCaches(userId);
+      return newPrompt;
+    },
+    [userId]
+  );
 
-  const updatePrompt = async (promptId: string, promptData: { name?: string; task_description?: string }) => {
-    if (!userId) throw new Error("User must be logged in.");
-    // No slash needed for specific resource
-    const response = await apiClient.patch<Prompt>(`/prompts/${promptId}`, promptData);
-    const updatedPrompt = (response && 'data' in response) ? (response as AxiosResponse<Prompt>).data : (response as Prompt);
-    globalMutate([`/prompts/${promptId}`, userId], updatedPrompt, { revalidate: false });
-    revalidateAllLists();
-    return updatedPrompt;
-  };
+  /* ---------------------------------------------------------------------- */
+  /*                              UPDATE                                    */
+  /* ---------------------------------------------------------------------- */
+  const updatePrompt = useCallback(
+    async (promptId: string, updates: { name?: string; task_description?: string }) => {
+      if (!userId) throw new Error('User must be logged in.');
 
-  const deletePrompt = async (promptId: string) => {
-    if (!userId || !key) return;
-    const currentData = data || [];
-    const optimisticData = currentData.filter(p => p.id !== promptId);
-    mutate(optimisticData, { revalidate: false });
-    try {
-      // No slash needed for specific resource
-      await apiClient.delete(`/prompts/${promptId}`);
-      revalidateAllLists();
-    } catch (e) {
-      mutate(currentData, { revalidate: false });
-      console.error("Failed to delete prompt:", e);
-      throw e;
-    }
-  };
+      const resp = await apiClient.patch<Prompt>(`/prompts/${promptId}`, updates);
+      const updated = (resp as AxiosResponse<Prompt>).data ?? (resp as Prompt);
 
-  // --- FINAL, PRODUCTION-GRADE FIX: "Manual Flash + Lazy Sync" ---
-  const archivePrompt = async (promptId: string, isArchived: boolean) => {
-    if (!userId || !key) return;
+      // Optimistically push to the *detail* cache
+      globalMutate([`/prompts/${promptId}`, userId], updated, { revalidate: false });
+      revalidateAllRelatedCaches(userId);
+      return updated;
+    },
+    [userId]
+  );
 
-    const currentData = data || [];
+  /* ---------------------------------------------------------------------- */
+  /*                              DELETE                                    */
+  /* ---------------------------------------------------------------------- */
+  const deletePrompt = useCallback(
+    async (promptId: string) => {
+      if (!userId || !key) return;
 
-    // This is the data we *want* to see after the call succeeds.
-    // This is the same filter logic from your file that produced the "flash".
-    const finalData = currentData
+      const current = data ?? [];
+      const optimistic = current.filter(p => p.id !== promptId);
+
+      // 1. Optimistic UI
+      mutate(optimistic, { revalidate: false });
+
+      try {
+        await apiClient.delete(`/prompts/${promptId}`);
+
+        // 2. **CRITICAL** – wipe the single-prompt cache entry
+        globalMutate([`/prompts/${promptId}`, userId], null, { revalidate: false });
+
+        // 3. Refresh every list (removes the ID before any widget tries to read it)
+        revalidateAllRelatedCaches(userId);
+      } catch (e) {
+        // Rollback
+        mutate(current, { revalidate: false });
+        console.error('Failed to delete prompt:', e);
+        throw e;
+      }
+    },
+    [userId, key, data, mutate]
+  );
+
+  /* ---------------------------------------------------------------------- */
+  /*                              ARCHIVE                                   */
+  /* ---------------------------------------------------------------------- */
+  const archivePrompt = useCallback(
+    async (promptId: string, isArchived: boolean) => {
+      if (!userId || !key) return;
+
+      const current = data ?? [];
+
+      // Compute the *final* shape **without** touching the network yet
+      const finalData = current
         .map(p => (p.id === promptId ? { ...p, is_archived: isArchived } : p))
-        .filter(p => {
-            // This logic determines if the item should be in the *current* view
-            return includeArchived || p.id !== promptId || (p.id === promptId && !isArchived);
-         });
+        .filter(p => includeArchived || !p.is_archived);
 
-    try {
-      // 1. Await the API call. No optimistic update.
-      await apiClient.patch<Prompt>(`/prompts/${promptId}`, { is_archived: isArchived });
-      
-      // 2. SUCCESS! Now, "Manual Flash":
-      //    Update the *current* list's cache manually.
-      //    `revalidate: false` PREVENTS the race condition.
-      mutate(finalData, { revalidate: false });
+      try {
+        // 1. Real API call (no optimistic UI)
+        await apiClient.patch<Prompt>(`/prompts/${promptId}`, { is_archived: isArchived });
 
-      // 3. "Lazy Sync":
-      //    Find the *other* list (the one we're not looking at).
-      const otherListKey = includeArchived 
-            ? [`/prompts`, userId] 
-            : [`/prompts?include_archived=true`, userId];
-      
-      //    Trigger a background refresh for that list, but
-      //    delay it by 300ms to let Firestore's consistency catch up.
-      setTimeout(() => {
-        globalMutate(otherListKey);
-      }, 300);
+        // 2. Manual flash – update the *current* list instantly
+        mutate(finalData, { revalidate: false });
 
-      // 4. Critically: DO NOT call revalidateAllLists() here.
+        // 3. Lazy-sync the *other* list after Firestore settles
+        const otherKey: PromptListKey = includeArchived
+          ? [`/prompts`, userId]
+          : [`/prompts?include_archived=true`, userId];
 
-    } catch (e) {
-      // If the API call fails, we do nothing. The UI never flashed,
-      // so no rollback is needed. Just log and throw.
-      console.error("Failed to archive prompt:", e);
-      throw e;
-    }
-  };
-  // --- END FIX ---
+        setTimeout(() => globalMutate(otherKey), 300);
 
-  const ratePrompt = async (promptId: string, versionNumber: number, rating: number) => {
-    if (!userId || !key) return;
-    const currentData = data || [];
-    const promptToRate = currentData.find(p => p.id === promptId);
+        // 4. Also wipe the detail cache (archived prompts still exist)
+        globalMutate([`/prompts/${promptId}`, userId], undefined, { revalidate: true });
+      } catch (e) {
+        console.error('Failed to archive prompt:', e);
+        throw e;
+      }
+    },
+    [userId, key, data, mutate, includeArchived]
+  );
 
-    if (!promptToRate) {
-        console.warn("Prompt not found in cache for rating optimistic update.");
-        try {
-            await apiClient.post('/metrics/rate', { prompt_id: promptId, version_number: versionNumber, rating: rating });
-            revalidateAllLists();
-        } catch (e) {
-             console.error("Failed to submit rating:", e);
-             throw e;
-        }
+  /* ---------------------------------------------------------------------- */
+  /*                               RATING                                    */
+  /* ---------------------------------------------------------------------- */
+  const ratePrompt = useCallback(
+    async (promptId: string, versionNumber: number, rating: number) => {
+      if (!userId || !key) return;
+
+      const current = data ?? [];
+      const prompt = current.find(p => p.id === promptId);
+
+      // If the prompt isn’t in the current list, just fire-and-forget
+      if (!prompt) {
+        await apiClient.post('/metrics/rate', { prompt_id: promptId, version_number: versionNumber, rating });
+        revalidateAllRelatedCaches(userId);
         return;
-    }
+      }
 
-    const oldAvgRating = promptToRate.average_rating || 0;
-    const oldRatingCount = promptToRate.rating_count || 0;
-    const newRatingCount = oldRatingCount + 1;
-    const newAvgRating = ((oldAvgRating * oldRatingCount) + rating) / newRatingCount;
+      const oldAvg = prompt.average_rating ?? 0;
+      const oldCnt = prompt.rating_count ?? 0;
+      const newCnt = oldCnt + 1;
+      const newAvg = (oldAvg * oldCnt + rating) / newCnt;
 
-    const optimisticData = currentData.map(p =>
-        p.id === promptId
-            ? { ...p, average_rating: newAvgRating, rating_count: newRatingCount }
-            : p
-    );
-    mutate(optimisticData, { revalidate: false });
+      const optimistic = current.map(p =>
+        p.id === promptId ? { ...p, average_rating: newAvg, rating_count: newCnt } : p
+      );
 
-    try {
-      await apiClient.post('/metrics/rate', {
-        prompt_id: promptId,
-        version_number: versionNumber,
-        rating: rating
-      });
-      revalidateAllLists();
-    } catch (e) {
-      mutate(currentData, { revalidate: false });
-      console.error("Failed to submit rating:", e);
-      throw e;
-    }
-  };
+      mutate(optimistic, { revalidate: false });
 
+      try {
+        await apiClient.post('/metrics/rate', {
+          prompt_id: promptId,
+          version_number: versionNumber,
+          rating,
+        });
+        revalidateAllRelatedCaches(userId);
+      } catch (e) {
+        mutate(current, { revalidate: false });
+        console.error('Failed to submit rating:', e);
+        throw e;
+      }
+    },
+    [userId, key, data, mutate]
+  );
+
+  /* ---------------------------------------------------------------------- */
+  /*                               RETURN API                                 */
+  /* ---------------------------------------------------------------------- */
   return {
     prompts: data,
     isLoading: !error && !data && !!userId,
     isError: error,
+
     createPrompt,
     updatePrompt,
     deletePrompt,
@@ -204,19 +247,29 @@ export function usePrompts(includeArchived = false) {
   };
 }
 
+/* -------------------------------------------------------------------------- */
+/*                             usePromptDetail HOOK                           */
+/* -------------------------------------------------------------------------- */
 export function usePromptDetail(promptId: string | null) {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  // No slash needed for specific resource
-  const endpoint = `/prompts/${promptId}`;
-  const key = promptId && userId ? [endpoint, userId] : null;
+  const key: PromptDetailKey | null =
+    promptId && userId ? [`/prompts/${promptId}`, userId] : null;
 
-  const { data, error, mutate } = useSWR(key, singleFetcher);
+  const { data, error, mutate } = useSWR<Prompt | null>(key, singleFetcher, {
+    // 404 → null, not an error
+    onErrorRetry: (err, _key, _config, revalidate, { retryCount }) => {
+      if (err.response?.status === 404) return;
+      if (retryCount >= 3) return;
+      setTimeout(() => revalidate({ retryCount }), 1000 * 2 ** retryCount);
+    },
+  });
 
   return {
     prompt: data,
     isLoading: !error && !data && !!key,
     isError: error,
+    mutate,
   };
 }

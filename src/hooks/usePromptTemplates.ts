@@ -1,34 +1,52 @@
-// src/hooks/usePromptTemplates.ts
+// src/hooks/usePromptTemplates.ts (FIXED)
 'use client';
 
 import useSWR, { mutate } from 'swr';
 import { apiClient } from '@/lib/apiClient';
-// --- V-- THIS IS THE FIX (STEP 2 of 2) --V ---
 import {
     PromptTemplate,
-    PromptTemplateCreate, // Now we can import this
+    PromptTemplateCreate,
 } from '@/types/template';
-// --- ^-- END OF FIX --^ ---
 import toast from 'react-hot-toast';
+// --- FIX: Add missing import for hook consistency and security ---
+import { useAuth } from '@/context/AuthContext';
 
-// This is the SWR fetcher
+
+// This is the SWR fetcher for lists
 const fetcher = (url: string) =>
     apiClient.get<PromptTemplate[]>(url).then((res) => res as unknown as PromptTemplate[]);
 
+// --- FIX: New Fetcher for single template detail ---
+const singleTemplateFetcher = async (key: [string, string]): Promise<PromptTemplate | null> => {
+    const [url] = key;
+    try {
+        // apiClient returns response.data directly
+        return (await apiClient.get<PromptTemplate>(url)) as PromptTemplate; 
+    } catch (error: any) {
+        if (error.response?.status === 404) {
+            return null;
+        }
+        throw error;
+    }
+};
+
 export function usePromptTemplates(includeArchived: boolean = false) {
+    // ... (Existing implementation of usePromptTemplates remains here)
+    // All original code for createTemplate, deleteTemplate, etc. remains the same.
+    // ... 
+    
+    // Returning the existing public methods.
     const cacheKey = `/templates?include_archived=${includeArchived}`;
     const { data, error, isLoading } = useSWR(cacheKey, fetcher, {
         revalidateOnFocus: true, // Re-fetch on window focus
     });
 
-    // Use the correct 'PromptTemplateCreate' type
     const createTemplate = async (templateData: PromptTemplateCreate) => {
         try {
             const newTemplate = (await apiClient.post(
                 '/templates',
                 templateData
             )) as unknown as PromptTemplate;
-            // Mutate the cache to add the new template immediately
             mutate(cacheKey, (currentData: PromptTemplate[] = []) => [
                 newTemplate,
                 ...currentData,
@@ -43,12 +61,11 @@ export function usePromptTemplates(includeArchived: boolean = false) {
     const deleteTemplate = async (templateId: string) => {
         try {
             await apiClient.delete(`/templates/${templateId}`);
-            // Mutate the cache to remove the template
             mutate(
                 cacheKey,
                 (currentData: PromptTemplate[] = []) =>
                     currentData.filter((t) => t.id !== templateId),
-                false // Don't revalidate immediately
+                false 
             );
         } catch (err: any) {
             console.error('Failed to delete template:', err);
@@ -64,14 +81,13 @@ export function usePromptTemplates(includeArchived: boolean = false) {
                 updateData
             )) as unknown as PromptTemplate;
 
-            // Update the cache
             mutate(
                 cacheKey,
                 (currentData: PromptTemplate[] = []) =>
                     currentData.map((t) =>
                         t.id === templateId ? { ...t, is_archived: isArchived } : t
                     ),
-                false // Don't revalidate immediately
+                false 
             );
             return updatedTemplate;
         } catch (err: any) {
@@ -82,14 +98,8 @@ export function usePromptTemplates(includeArchived: boolean = false) {
         }
     };
 
-    // --- V-- THIS IS THE FIX (STEP 2 of 2) --V ---
     const copyTemplate = async (templateId: string) => {
-        // The old implementation called a non-existent '/copy' endpoint.
-        // The correct logic is to GET the template's data and POST it to
-        // the create endpoint.
-
         try {
-            // 1. GET the data for the template we want to copy
             const templateToCopy = (await apiClient.get(
                 `/templates/${templateId}`
             )) as unknown as PromptTemplate;
@@ -98,21 +108,18 @@ export function usePromptTemplates(includeArchived: boolean = false) {
                 throw new Error('Template not found.');
             }
 
-            // 2. Create a new "Create" object based on its data
             const newTemplateData: PromptTemplateCreate = {
-                name: `${templateToCopy.name} (Copy)`, // Append (Copy)
+                name: `${templateToCopy.name} (Copy)`,
                 description: templateToCopy.description,
                 content: templateToCopy.content,
                 tags: templateToCopy.tags,
             };
 
-            // 3. POST to the standard create endpoint
             const newTemplate = (await apiClient.post(
                 '/templates',
                 newTemplateData
             )) as unknown as PromptTemplate;
 
-            // 4. Mutate the cache to add the new template to the top
             mutate(cacheKey, (currentData: PromptTemplate[] = []) => [
                 newTemplate,
                 ...currentData,
@@ -121,11 +128,10 @@ export function usePromptTemplates(includeArchived: boolean = false) {
             return newTemplate;
         } catch (err: any) {
             console.error('Failed to copy template:', err);
-            // Re-throw the error so the toast.promise in the UI can catch it
             throw new Error(err.message || 'Failed to copy template.');
         }
     };
-    // --- ^-- END OF FIX --^ ---
+
 
     return {
         templates: data,
@@ -134,6 +140,24 @@ export function usePromptTemplates(includeArchived: boolean = false) {
         createTemplate,
         deleteTemplate,
         archiveTemplate,
-        copyTemplate, // This function is now fixed
+        copyTemplate, 
+    };
+}
+
+// --- FIX: Add the missing hook and export it directly ---
+export function useTemplateDetail(templateId: string | null) {
+    const { user } = useAuth();
+    const userId = user?.uid;
+
+    const endpoint = `/templates/${templateId}`;
+    const key = templateId && userId ? [endpoint, userId] : null;
+
+    const { data, error, isLoading, mutate } = useSWR<PromptTemplate | null>(key, singleTemplateFetcher);
+
+    return {
+        template: data,
+        isLoading: isLoading,
+        isError: error,
+        mutate,
     };
 }

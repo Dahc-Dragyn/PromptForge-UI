@@ -33,46 +33,39 @@ const GuidePage = () => {
                     1. Composition: Building Your Prompt
                 </h2>
                 <p className="text-gray-300 mb-6">
-                    A great prompt is built from clear elements. These tools
-                    help you compose them.
+                    The Dashboard gives you <strong className="text-white">two ways</strong> to build a complete prompt:
                 </p>
 
                 <div className="space-y-6">
+                    {/* --- 1. AI-Assisted Template Creation (The "Easy Mode") --- */}
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* ArchiveBoxIcon for storing pieces (Templates) */}
-                            <ArchiveBoxIcon className="h-6 w-6" />
-                            Template Library: Your Reusable Prompt Pieces
+                            {/* SparklesIcon for AI/Automatic functionality */}
+                            <SparklesIcon className="h-6 w-6" />
+                            AI-Assisted Template Creation (The "Easy Mode")
                         </h3>
                         <p className="text-gray-300">
-                            <strong>What it is:</strong> This is your personal
-                            toolbox for prompt "pieces." Instead of re-typing the
-                            same persona, task, or style rules every time, you
-                            save them here.
+                            <strong>What it is:</strong> This tool uses AI to
+                            help you create new, high-quality templates *for* your
+                            library. You just give it a simple goal.
                         </p>
                         <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it Works:</strong> When you create a
-                            template, you save a block of text and give it a
-                            type: <strong>`Persona`</strong> (e.g., "You are a
-                            senior copywriter"), <strong>`Task`</strong> (e.g.,
-                            "Write a blog post intro"), or{' '}
-                            <strong>`Style`</strong> (e.g., "Format the output as
-                            a JSON object"). These are the building blocks for
+                            <strong>How it Works:</strong> You type a simple
+                            description (e.g., "A persona for a skeptical
+                            pirate") and add tags. The AI will then{' '}
+                            <strong>generate and save</strong> a new, detailed
+                            template for you, which you can immediately use in
                             the Manual Composer.
                         </p>
                         <a
-                            href="/dashboard#template-library"
+                            href="/dashboard" // Assumes AI Composer is also on the dashboard
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
-                            Go to your Templates &rarr;
+                            Go to the Composer &rarr;
                         </a>
                     </div>
-
-                    <p className="text-lg text-gray-300 mb-2 mt-4 text-center">
-                        The Dashboard gives you <strong>two ways</strong> to
-                        build a complete prompt:
-                    </p>
-
+                    
+                    {/* --- 2. Prompt Composer (Manual - The "Pro Mode") - Original item 3, now item 2 --- */}
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
                             {/* RectangleGroupIcon for manual, structured composition */}
@@ -115,32 +108,40 @@ const GuidePage = () => {
                             Go to the Composer &rarr;
                         </a>
                     </div>
+                    
+                    {/* --- Added transitional text here to follow the manual composer --- */}
+                    <p className="text-gray-300 mb-6">
+                        A great prompt is built from clear elements. These tools help you compose them.
+                    </p>
 
-                    {/* --- FIX: Updated Automatic Composer description --- */}
+                    {/* --- 3. Template Library: Your Reusable Prompt Pieces - Original item 1, now item 3 --- */}
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* SparklesIcon for AI/Automatic functionality */}
-                            <SparklesIcon className="h-6 w-6" />
-                            AI-Assisted Template Creation (The "Easy Mode")
+                            {/* ArchiveBoxIcon for storing pieces (Templates) */}
+                            <ArchiveBoxIcon className="h-6 w-6" />
+                            Template Library: Your Reusable Prompt Pieces
                         </h3>
                         <p className="text-gray-300">
-                            <strong>What it is:</strong> This tool uses AI to
-                            help you create new, high-quality templates *for* your
-                            library. You just give it a simple goal.
+                            <strong>What it is:</strong> This is your personal
+                            toolbox for prompt "pieces." Instead of re-typing the
+                            same persona, task, or style rules every time, you
+                            save them here.
                         </p>
                         <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it Works:</strong> You type a simple
-                            description (e.g., "A persona for a skeptical
-                            pirate") and add tags. The AI will then{' '}
-                            <strong>generate and save</strong> a new, detailed
-                            template for you, which you can immediately use in
+                            <strong>How it Works:</strong> When you create a
+                            template, you save a block of text and give it a
+                            type: <strong>`Persona`</strong> (e.g., "You are a
+                            senior copywriter"), <strong>`Task`</strong> (e.g.,
+                            "Write a blog post intro"), or{' '}
+                            <strong>`Style`</strong> (e.g., "Format the output as
+                            a JSON object"). These are the building blocks for
                             the Manual Composer.
                         </p>
                         <a
-                            href="/dashboard" // Assumes AI Composer is also on the dashboard
+                            href="/dashboard#template-library"
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
-                            Go to the Composer &rarr;
+                            Go to your Templates &rarr;
                         </a>
                     </div>
                 </div>

@@ -1,3 +1,5 @@
+// src/app/sandbox/page.tsx
+
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
@@ -216,8 +218,26 @@ function SandboxContent() {
             </div>
             <Modal isOpen={isSaveModalOpen} onClose={() => setIsSaveModalOpen(false)} title="Save New Prompt">
                 <form onSubmit={handleSavePrompt} className="space-y-4">
-                    <input type="text" value={newPromptName} onChange={(e) => setNewPromptName(e.target.value)} placeholder="Prompt Name" disabled={isGeneratingDetails} className="w-full p-2 text-black rounded" required />
-                    <textarea value={newPromptDescription} onChange={(e) => setNewPromptDescription(e.target.value)} placeholder="Description" disabled={isGeneratingDetails} className="w-full p-2 text-black rounded" rows={3} required />
+                    {/* FIX 1: Change text-black to text-white and add dark background/border */}
+                    <input 
+                        type="text" 
+                        value={newPromptName} 
+                        onChange={(e) => setNewPromptName(e.target.value)} 
+                        placeholder="Prompt Name" 
+                        disabled={isGeneratingDetails} 
+                        className="w-full p-2 text-white bg-gray-700 border border-gray-600 rounded" 
+                        required 
+                    />
+                    {/* FIX 2: Change text-black to text-white and add dark background/border */}
+                    <textarea 
+                        value={newPromptDescription} 
+                        onChange={(e) => setNewPromptDescription(e.target.value)} 
+                        placeholder="Description" 
+                        disabled={isGeneratingDetails} 
+                        className="w-full p-2 text-white bg-gray-700 border border-gray-600 rounded" 
+                        rows={3} 
+                        required 
+                    />
                     <div className="flex justify-end gap-3 mt-4">
                         <button type="button" onClick={() => setIsSaveModalOpen(false)} className="px-4 py-2 bg-gray-600 rounded">Cancel</button>
                         <button type="submit" disabled={isSaving || isGeneratingDetails} className="px-4 py-2 bg-blue-600 rounded">{isSaving ? 'Saving...' : 'Save'}</button>
