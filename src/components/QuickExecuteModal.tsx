@@ -1,11 +1,10 @@
-// src/components/QuickExecuteModal.tsx
 'use client';
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { apiClient } from '@/lib/apiClient';
 import Modal from './Modal';
-import AutoSizingTextarea from './AutoSizingTextarea';
+// Removed: AutoSizingTextarea import, as the variables input is no longer used.
 
 interface QuickExecuteModalProps {
   isOpen: boolean;
@@ -15,28 +14,28 @@ interface QuickExecuteModalProps {
 }
 
 const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: QuickExecuteModalProps) => {
-  const [variables, setVariables] = useState('');
+  // Removed: const [variables, setVariables] = useState('');
   const [result, setResult] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  // CORRECTED: Set the default model to the cost-effective standard
+  // Using the cheapest model, Gemini 2.5 Flash-Lite, as requested.
   const [model, setModel] = useState('gemini-2.5-flash-lite');
 
   const handleExecute = async () => {
     setIsLoading(true);
     setResult('');
     try {
-      let parsedVariables = {};
-      if (variables.trim()) {
-        parsedVariables = JSON.parse(variables);
-      }
+      // Sending a simplified payload with prompt_text, model, and an empty variables object.
       const response = await apiClient.post<{ final_text: string }>('/prompts/execute', {
         prompt_text: promptText,
-        variables: parsedVariables,
+        // Empty variables object sent to satisfy backend structure if required
+        variables: {},
         model: model,
       });
       setResult(response.final_text);
     } catch (err: any) {
-      toast.error(err.message || 'Execution failed.');
+      // Robust error display
+      const errorDetail = err.response?.data?.detail || err.message || 'Execution failed.';
+      toast.error(errorDetail);
     } finally {
       setIsLoading(false);
     }
@@ -45,21 +44,17 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Quick Execute Prompt">
       <div className="space-y-4">
+        {/* 1. Prompt Text Section (Read-only) */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1">Prompt Text (Read-only)</label>
           <div className="w-full bg-gray-800 border-gray-700 rounded-md p-2 text-gray-400 max-h-40 overflow-y-auto">
             <pre className="whitespace-pre-wrap text-sm">{promptText}</pre>
           </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">Variables (JSON format)</label>
-          <AutoSizingTextarea
-            value={variables}
-            onChange={(e) => setVariables(e.target.value)}
-            placeholder='{ "name": "John", "topic": "AI" }'
-            className="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-white"
-          />
-        </div>
+        
+        {/* NOTE: Variables input section has been intentionally removed for simplification. */}
+        
+        {/* 2. Result Section */}
         {result && (
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Result</label>
@@ -68,6 +63,8 @@ const QuickExecuteModal = ({ isOpen, onClose, promptText, onSaveAsPrompt }: Quic
             </div>
           </div>
         )}
+        
+        {/* 3. Action Buttons */}
         <div className="flex justify-between items-center pt-4">
           <button
             onClick={() => onSaveAsPrompt(promptText)}
