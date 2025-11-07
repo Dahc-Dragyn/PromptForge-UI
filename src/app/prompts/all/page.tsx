@@ -1,13 +1,21 @@
-// src/app/prompts/all/page.tsx
 'use client';
 
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowLeftIcon, MagnifyingGlassIcon } from '@heroicons/react/24/solid';
+import toast from 'react-hot-toast';
+import { 
+  ArrowLeftIcon, 
+  MagnifyingGlassIcon,
+  ArchiveBoxIcon,
+  ArrowUturnLeftIcon,
+  TrashIcon
+} from '@heroicons/react/24/solid';
 import { usePrompts } from '@/hooks/usePrompts';
-import { Prompt } from '@/types/prompt';
-import SearchResultCard from '@/components/SearchResultCard';
+import { Prompt, PromptVersion } from '@/types/prompt';
 import { useAuth } from '@/context/AuthContext';
+import { apiClient } from '@/lib/apiClient';
+import SendToLlm from '@/components/SendToLlm';
+import StarRating from '@/components/StarRating';
 
 type TabState = 'active' | 'archived';
 
@@ -15,13 +23,21 @@ export default function AllPromptsPage() {
   const { user } = useAuth();
   const [currentTab, setCurrentTab] = useState<TabState>('active');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // State for interaction
+  const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
+  const [ratedInSession, setRatedInSession] = useState<Set<string>>(new Set());
 
-  // Fetch both active and all prompts
+  // Fetch active prompts and mutation functions from one hook
   const { 
     prompts: activePrompts, 
-    isLoading: isLoadingActive 
+    isLoading: isLoadingActive,
+    deletePrompt,
+    archivePrompt,
+    ratePrompt,
   } = usePrompts(false);
   
+  // Fetch all prompts (including archived) from another
   const { 
     prompts: allPrompts, 
     isLoading: isLoadingAll 
@@ -32,11 +48,11 @@ export default function AllPromptsPage() {
     const all = allPrompts || [];
     const active = activePrompts || [];
     
-    // Create a Set of active prompt IDs for quick lookup
-    const activeIdSet = new Set(active.map(p => p.id));
+    // Explicitly type 'p' as Prompt
+    const activeIdSet = new Set(active.map((p: Prompt) => p.id));
     
-    // Archived prompts are those in 'allPrompts' but not in 'activePrompts'
-    const archived = all.filter(p => !activeIdSet.has(p.id));
+    // Explicitly type 'p' as Prompt
+    const archived = all.filter((p: Prompt) => !activeIdSet.has(p.id));
     
     return {
       archivedPrompts: archived,
@@ -55,15 +71,78 @@ export default function AllPromptsPage() {
     if (!promptsToDisplay) return [];
     if (!searchTerm) return promptsToDisplay;
 
-    return promptsToDisplay.filter(prompt =>
+    // Explicitly type 'prompt' as Prompt
+    return promptsToDisplay.filter((prompt: Prompt) =>
       prompt.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      prompt.task_description?.toLowerCase().includes(searchTerm.toLowerCase())
+      (prompt.task_description && 
+       prompt.task_description.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   }, [promptsToDisplay, searchTerm]);
 
   const isLoading = isLoadingActive || isLoadingAll;
 
-  // Helper to render the list of prompts
+  // --- Action Handlers ---
+
+  const handleAction = (
+    actionPromise: Promise<unknown>,
+    messages: { loading: string; success: string; error: string }
+  ) => {
+    return toast.promise(actionPromise, messages);
+  };
+
+  const handleCopyText = async (promptId: string) => {
+    setCopiedPromptId(promptId);
+    const toastId = toast.loading('Copying...');
+    try {
+      const versions = (await apiClient.get<PromptVersion[]>(
+        `/prompts/${promptId}/versions`
+      )) as unknown as PromptVersion[]; 
+
+      if (!versions || versions.length === 0)
+        throw new Error('This prompt has no versions to copy.');
+      
+      const latestVersion = versions.sort(
+        (a, b) => b.version_number - a.version_number
+      )[0];
+      
+      await navigator.clipboard.writeText(latestVersion.prompt_text);
+      toast.success('Copied to clipboard!', { id: toastId });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to copy.';
+      toast.error(message, { id: toastId });
+    } finally {
+      setTimeout(() => setCopiedPromptId(null), 2000);
+    }
+  };
+
+  const handleArchivePrompt = (promptId: string, isArchived: boolean) =>
+    archivePrompt(promptId, isArchived);
+
+  const handleDeletePrompt = (promptId: string) => {
+    if (window.confirm('Are you sure you want to delete this prompt?')) {
+      handleAction(deletePrompt(promptId), {
+        loading: 'Deleting...',
+        success: 'Prompt deleted.',
+        error: 'Failed to delete.',
+      });
+    }
+  };
+
+  const handleRate = (
+    promptId: string,
+    versionNumber: number,
+    rating: number
+  ) => {
+    handleAction(ratePrompt(promptId, versionNumber, rating), {
+      loading: 'Submitting...',
+      success: 'Rating submitted!',
+      error: 'Failed to submit rating.',
+    })
+      .then(() => setRatedInSession((prev) => new Set(prev).add(promptId)))
+      .catch(() => {});
+  };
+
+  // Helper to render the full-featured list
   const renderPromptList = () => {
     if (isLoading) {
       return <div className="text-center text-gray-400 mt-8">Loading prompts...</div>;
@@ -81,8 +160,97 @@ export default function AllPromptsPage() {
 
     return (
       <div className="space-y-4 mt-6">
-        {filteredPrompts.map(prompt => (
-          <SearchResultCard key={prompt.id} item={prompt} type="prompt" />
+        {filteredPrompts.map((prompt: Prompt) => (
+          <div
+            key={prompt.id}
+            className={`p-4 bg-gray-700/50 rounded-lg`}
+          >
+            <div className="flex justify-between items-start">
+              <Link
+                href={`/prompts/${prompt.id}`}
+                className={`font-semibold mb-1 block hover:underline ${
+                  prompt.is_archived
+                    ? 'text-gray-500 line-through'
+                    : 'text-indigo-400'
+                }`}
+              >
+                {prompt.name}
+              </Link>
+            </div>
+            <p className="text-sm text-gray-400 line-clamp-2 mb-3">
+              {prompt.task_description}
+            </p>
+            <div className="flex items-center justify-between pt-3 border-t border-gray-700/50">
+              <div className="flex items-center flex-wrap gap-x-4 gap-y-2">
+                <StarRating
+                  currentRating={Math.round(
+                    prompt.average_rating || 0
+                  )}
+                  disabled={ratedInSession.has(prompt.id)}
+                  onRatingChange={(rating) =>
+                    handleRate(
+                      prompt.id,
+                      prompt.latest_version_number ?? 1,
+                      rating
+                    )
+                  }
+                />
+                <div className="flex items-center gap-x-2">
+                  {/* --- THIS IS THE FIX --- */}
+                  <Link
+                    href={`/prompts/${prompt.id}`}
+                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    View
+                  </Link>
+                  <button
+                    onClick={() => handleCopyText(prompt.id)}
+                    className={`px-3 py-1 text-xs text-white rounded transition-colors w-20 ${
+                      copiedPromptId === prompt.id
+                        ? 'bg-green-600'
+                        : 'bg-gray-600 hover:bg-gray-500'
+                    }`}
+                  >
+                    {copiedPromptId === prompt.id
+                      ? 'Copied!'
+                      : 'Copy'}
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleArchivePrompt(
+                        prompt.id,
+                        !prompt.is_archived
+                      )
+                    }
+                    className="p-1.5 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700"
+                    title={
+                      prompt.is_archived
+                        ? 'Unarchive'
+                        : 'Archive'
+                    }
+                  >
+                    {prompt.is_archived ? (
+                      <ArrowUturnLeftIcon className="h-4 w-4" />
+                    ) : (
+                      <ArchiveBoxIcon className="h-4 w-4" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleDeletePrompt(prompt.id)
+                    }
+                    className="p-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                    title="Delete"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-shrink-0">
+                <SendToLlm promptId={prompt.id} />
+              </div>
+            </div>
+          </div>
         ))}
       </div>
     );

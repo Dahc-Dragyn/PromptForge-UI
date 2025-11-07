@@ -29,22 +29,22 @@ export default function RootLayout({
           strategy="beforeInteractive"
         />
       </head>
-      {/* Layout Fix: 
-        - 'h-screen' ensures the app fills the viewport height.
-        - 'flex flex-col' creates the vertical layout for Navbar + main content.
+      {/* 
+        Layout Fix:
+        - 'h-screen' makes the body fill the viewport height.
+        - 'flex flex-col' creates a vertical layout for the Navbar and main content.
       */}
-      <body className={`${inter.className} h-screen flex flex-col`}>
+      <body className={`${inter.className} h-screen flex flex-col bg-gray-900`}>
         {/* FIX: Using react-hot-toast's Toaster, as it was originally */}
         <Toaster position="top-center" />
         <AuthProvider>
           <AppCacheProvider>
             <Navbar />
             {/* Main Content Area:
-              - 'flex-1' makes it fill all *remaining* vertical space.
-              - 'overflow-y-auto' ensures ONLY this area scrolls, not the whole page.
-              - 'p-6' adds padding. 'bg-gray-900' is the background color.
+              - 'flex-1' allows this area to grow and fill the remaining vertical space.
+              - 'overflow-y-auto' ensures that only this main content area will scroll if its content is too long.
             */}
-            <main className="flex-1 overflow-y-auto p-6 bg-gray-900">
+            <main className="flex-1 overflow-y-auto">
               {children}
             </main>
           </AppCacheProvider>

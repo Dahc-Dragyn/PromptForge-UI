@@ -1,4 +1,3 @@
-// src/app/dashboard/page.tsx
 'use client';
 
 import { useState, Suspense, useMemo } from 'react';
@@ -406,6 +405,14 @@ const DashboardContent = () => {
                                     </div>
                                 </div>
                             ))}
+                            {/* --- "SEE ALL" LINK FOR TEMPLATES --- */}
+                            {visibleTemplates.length > 0 && (
+                                <div className="mt-4 text-right">
+                                    <Link href="/templates/all" className="text-sm font-medium text-indigo-400 hover:text-indigo-300">
+                                        See All &rarr;
+                                    </Link>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -553,6 +560,14 @@ const DashboardContent = () => {
                                     </div>
                                 </div>
                             ))}
+                            {/* --- "SEE ALL" LINK FOR PROMPTS --- */}
+                            {visiblePrompts.length > 0 && (
+                                <div className="mt-4 text-right">
+                                    <Link href="/prompts/all" className="text-sm font-medium text-indigo-400 hover:text-indigo-300">
+                                        See All &rarr;
+                                    </Link>
+                                </div>
+                            )}
                         </div>
                     </div>
 
