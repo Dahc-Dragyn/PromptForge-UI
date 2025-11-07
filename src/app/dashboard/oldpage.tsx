@@ -1,3 +1,4 @@
+// src/app/dashboard/page.tsx
 'use client';
 
 import { useState, Suspense, useMemo } from 'react';
@@ -43,7 +44,6 @@ const DashboardContent = () => {
     const [showArchived, setShowArchived] = useState(false);
     const [showArchivedTemplates, setShowArchivedTemplates] = useState(false);
     const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
-    // --- FIX: Add state for the template copy button ---
     const [copiedTemplateId, setCopiedTemplateId] = useState<string | null>(null);
     const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
     const [ratedInSession, setRatedInSession] = useState<Set<string>>(new Set());
@@ -55,7 +55,9 @@ const DashboardContent = () => {
         deletePrompt,
         archivePrompt,
         ratePrompt,
-    } = usePrompts(true);
+    } = usePrompts(true); // <-- This is fine, it's for the "Your Prompts" widget
+    
+    // This hook call is for the *Template Library* widget
     const {
         templates,
         isLoading: templatesLoading,
@@ -63,8 +65,9 @@ const DashboardContent = () => {
         createTemplate,
         deleteTemplate,
         archiveTemplate,
-        copyTemplate, // This function will now be used for "Duplicate" if we add it
-    } = usePromptTemplates(true);
+        copyTemplate, 
+    } = usePromptTemplates(true); // <-- This is also fine, it's for this page
+    
     const {
         activities,
         isLoading: activityLoading,
@@ -110,14 +113,13 @@ const DashboardContent = () => {
         return toast.promise(actionPromise, messages);
     };
 
-    // This function is now correct
     const handleCopyText = async (promptId: string) => {
         setCopiedPromptId(promptId);
         const toastId = toast.loading('Copying...');
         try {
             const versions = (await apiClient.get<PromptVersion[]>(
                 `/prompts/${promptId}/versions`
-            )) as unknown as PromptVersion[];
+            )) as unknown as PromptVersion[]; // This cast is unsafe but part of old code
 
             if (!versions || versions.length === 0)
                 throw new Error('This prompt has no versions to copy.');
@@ -143,20 +145,15 @@ const DashboardContent = () => {
         }
     };
 
-    // --- V-- THIS IS THE FIX --V ---
-    // Rewrite this function to do "Copy to Clipboard" instead of "Duplicate"
     const handleCopyTemplate = async (templateId: string) => {
-        setCopiedTemplateId(templateId); // Use the new state
+        setCopiedTemplateId(templateId); 
         const toastId = toast.loading('Copying template content...');
 
         try {
-            // Find the template from the data we already have
             const template = templates?.find((t) => t.id === templateId);
             if (!template) {
                 throw new Error('Template not found.');
             }
-
-            // Copy its content to the clipboard
             await navigator.clipboard.writeText(template.content);
             toast.success('Template copied to clipboard!', { id: toastId });
         } catch (err) {
@@ -164,13 +161,10 @@ const DashboardContent = () => {
                 err instanceof Error ? err.message : 'Failed to copy.';
             toast.error(message, { id: toastId });
         } finally {
-            // Clear the "Copied!" state after 2 seconds
             setTimeout(() => setCopiedTemplateId(null), 2000);
         }
     };
-    // --- ^-- END OF FIX --^ ---
 
-    // FIXED: handleSendTemplateToLlm
     const handleSendTemplateToLlm = async (
         content: string,
         service: 'ChatGPT' | 'Gemini' | 'Grok'
@@ -329,7 +323,6 @@ const DashboardContent = () => {
                                             >
                                                 View
                                             </Link>
-                                            {/* --- V-- THIS IS THE FIX --V --- */}
                                             <button
                                                 onClick={() =>
                                                     handleCopyTemplate(template.id)
@@ -344,7 +337,6 @@ const DashboardContent = () => {
                                                     ? 'Copied!'
                                                     : 'Copy'}
                                             </button>
-                                            {/* --- ^-- END OF FIX --^ --- */}
                                             <button
                                                 onClick={() =>
                                                     handleArchiveTemplate(
@@ -570,6 +562,7 @@ const DashboardContent = () => {
                         </h2>
                         <div className="flex-grow">
                             <PromptComposerProvider>
+                                {/* --- THIS IS THE BUILD ERROR --- */}
                                 <PromptComposer templates={templates ?? []} />
                             </PromptComposerProvider>
                         </div>
@@ -584,8 +577,6 @@ const DashboardContent = () => {
             >
                 <TemplateForm
                     onSubmit={async (data) => {
-                        // --- FIX: Ensure data type compatibility ---
-                        // We cast 'data' to the correct type for the hook
                         await handleAction(
                             createTemplate(data as PromptTemplateCreate),
                             {
