@@ -316,9 +316,13 @@ const DashboardContent = () => {
                                     </p>
                                     <div className="flex items-center justify-between pt-3 border-t border-gray-700/50">
                                         <div className="flex items-center gap-x-2">
+                                            {/* --- 
+                                                --- FIX #1 IS HERE ---
+                                                --- Added !bg-blue-600 and hover:!bg-blue-700 ---
+                                            --- */}
                                             <Link
                                                 href={`/templates/${template.id}`}
-                                                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                                                className="px-3 py-1 text-xs !bg-blue-600 text-white rounded hover:!bg-blue-700"
                                             >
                                                 View
                                             </Link>
@@ -505,9 +509,13 @@ const DashboardContent = () => {
                                                 }
                                             />
                                             <div className="flex items-center gap-x-2">
+                                                {/* --- 
+                                                    --- FIX #2 IS HERE ---
+                                                    --- Added !bg-blue-600 and hover:!bg-blue-700 ---
+                                                --- */}
                                                 <Link
                                                     href={`/prompts/${prompt.id}`}
-                                                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                                                    className="px-3 py-1 text-xs !bg-blue-600 text-white rounded hover:!bg-blue-700"
                                                 >
                                                     View
                                                 </Link>

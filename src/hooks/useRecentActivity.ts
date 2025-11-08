@@ -1,8 +1,12 @@
 // src/hooks/useRecentActivity.ts
+'use client';
 import useSWR from 'swr';
 import { apiClient } from '@/lib/apiClient';
 import { useAuth } from '@/context/AuthContext';
 import { ActivityItem } from '@/types/prompt'; // Import the UI type
+
+// Define the base endpoint for the cache key
+const RECENT_ACTIVITY_ENDPOINT_BASE = '/metrics/activity/recent/';
 
 // Type for the raw API response
 interface ApiActivity {
@@ -12,6 +16,19 @@ interface ApiActivity {
   timestamp: string;
   prompt_id: string;
 }
+
+/**
+ * FIX: Export a function to generate the user-aware cache key.
+ * This is the "key" we will use in the save hooks for mutation.
+ * @param limit The number of items to fetch.
+ * @param userId The ID of the authenticated user.
+ * @returns The SWR array cache key, or null if the user is not logged in.
+ */
+export const getRecentActivityCacheKey = (limit: number, userId?: string | null): [string, string] | null => {
+  const endpoint = `${RECENT_ACTIVITY_ENDPOINT_BASE}?limit=${limit}`;
+  return userId ? [endpoint, userId] : null;
+};
+
 
 // Custom fetcher to map API response to UI type
 const fetcher = async (key: [string, string]): Promise<ActivityItem[]> => {
@@ -28,11 +45,8 @@ export function useRecentActivity(limit: number = 10) {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  // FIX: Added trailing slash
-  const endpoint = `/metrics/activity/recent/?limit=${limit}`;
-
-  // FIX: User-aware array key
-  const key = userId ? [endpoint, userId] : null;
+  // Use the exported helper function to get the correct cache key
+  const key = getRecentActivityCacheKey(limit, userId);
 
   // Use the custom fetcher and the correct return type
   const { data, error } = useSWR<ActivityItem[]>(key, fetcher);

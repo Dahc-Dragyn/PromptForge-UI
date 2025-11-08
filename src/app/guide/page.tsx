@@ -33,7 +33,7 @@ const GuidePage = () => {
                     1. Composition: Building Your Prompt
                 </h2>
                 <p className="text-gray-300 mb-6">
-                    The Dashboard gives you <strong className="text-white">two ways</strong> to build a complete prompt:
+                    The Dashboard gives you <strong className="text-white">two ways</strong> to build a complete prompt:
                 </p>
 
                 <div className="space-y-6">
@@ -42,21 +42,25 @@ const GuidePage = () => {
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
                             {/* SparklesIcon for AI/Automatic functionality */}
                             <SparklesIcon className="h-6 w-6" />
-                            AI-Assisted Template Creation (The "Easy Mode")
+                            AI-Assisted Template and Prompt Creation (The "Easy Mode")
                         </h3>
                         <p className="text-gray-300">
                             <strong>What it is:</strong> This tool uses AI to
-                            help you create new, high-quality templates *for* your
+                            help you create new, high-quality templates and prompts *for* your
                             library. You just give it a simple goal.
                         </p>
+                        
+                        {/* --- START: UPDATED WORKFLOW TEXT --- */}
                         <p className="text-sm text-gray-400 mt-2">
                             <strong>How it Works:</strong> You type a simple
                             description (e.g., "A persona for a skeptical
                             pirate") and add tags. The AI will then{' '}
-                            <strong>generate and save</strong> a new, detailed
-                            template for you, which you can immediately use in
-                            the Manual Composer.
+                            <strong>generate three things: a Persona, a Task, and a Prompt.</strong>
+                            {' '}You must save the new Persona and Task to use them,
+                            but the new Prompt is available immediately.
                         </p>
+                        {/* --- END: UPDATED WORKFLOW TEXT --- */}
+
                         <a
                             href="/dashboard" // Assumes AI Composer is also on the dashboard
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
@@ -257,7 +261,7 @@ const GuidePage = () => {
                         <p className="text-sm text-gray-400 mt-2">
                             <strong>How it Works:</strong> You write{' '}
                             <em>one</em> prompt and run it against multiple
-                            different models (like Gemini, GPT-4o Mini, etc.)
+                            different models (like Gemini, GPT-4o Mini, etc and More to come.)
                             all at the same time. This is the perfect way to
                             find the <strong>fastest</strong> model that gives
                             you the high-quality result you need by comparing
