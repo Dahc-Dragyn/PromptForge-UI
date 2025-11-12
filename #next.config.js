@@ -1,23 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Your existing setting for Google Auth development
+  // Disabling strict mode is necessary in development for the Google Auth
+  // provider to work correctly with the Cross-Origin policies. It prevents
+  // double-rendering issues that can interfere with the auth flow.
   reactStrictMode: false,
 
-  // CRITICAL: This is required for the Docker standalone build.
-  output: 'standalone',
-
-  // ADDED: This block tells 'next build' to ignore ESLint errors.
-  eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    // This is the line we were missing.
-    ignoreBuildErrors: true,
-  },
-
-  // Your existing headers configuration for Firebase/CORS
   async headers() {
     return [
       {
@@ -30,12 +17,15 @@ const nextConfig = {
           },
           {
             key: 'Cross-Origin-Embedder-Policy',
+            // This value is needed for Firebase Google Auth to work.
+            // It allows cross-origin resources to be embedded.
             value: 'credentialless',
           },
         ],
       },
       {
-        // Workaround for Next.js development mode HMR
+        // This is a workaround for a known issue with Next.js development mode and COOP/COEP headers.
+        // It disables the headers for the Hot Module Replacement (HMR) path.
         source: '/_next/webpack-hmr',
         headers: [
           {

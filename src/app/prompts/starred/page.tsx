@@ -46,8 +46,13 @@ const StarredPromptsContent = () => {
         setCopiedPromptId(promptId);
         const toastId = toast.loading('Copying...');
         try {
-            const versions = await apiClient.get<PromptVersion[]>(`/prompts/${promptId}/versions`);
+            // FIX 1: Access the .data property of the Axios response
+            const versionsResponse = await apiClient.get<PromptVersion[]>(`/prompts/${promptId}/versions`);
+            const versions = versionsResponse.data;
+            
             if (!versions || versions.length === 0) throw new Error("This prompt has no versions to copy.");
+            
+            // ... and use the .data property here
             await navigator.clipboard.writeText(versions[0].prompt_text);
             toast.success('Copied to clipboard!', { id: toastId });
         } catch (err: any) {
@@ -88,11 +93,18 @@ const StarredPromptsContent = () => {
                             <div className="flex items-center flex-wrap gap-x-4 gap-y-2">
                                 <StarRating 
                                     currentRating={Math.round(prompt.average_rating || 0)}
-                                    onRatingChange={(rating) => handleAction(ratePrompt(prompt.id, prompt.latest_version, rating), {loading: 'Updating...', success: 'Rating updated!', error: 'Failed to update.'})}
+                                    // FIX 2: Use prompt.latest_version_number (which is a number)
+                                    onRatingChange={(rating) => {
+                                        if (prompt.latest_version_number) {
+                                            handleAction(ratePrompt(prompt.id, prompt.latest_version_number, rating), {loading: 'Updating...', success: 'Rating updated!', error: 'Failed to update.'})
+                                        } else {
+                                            toast.error("Cannot rate: latest version number is missing.");
+                                        }
+                                    }}
                                 />
                                 <div className="flex items-center gap-x-2">
                                     <Link href={`/prompts/${prompt.id}`} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">View</Link>
-                                    <button onClick={() => handleCopyText(prompt.id)} className={`px-3 py-1 text-xs text-white rounded transition-colors w-20 ${copiedPromptId === prompt.id ? 'bg-green-600' : 'bg-gray-600 hover:bg-gray-500'}`}>
+                                    <button onClick={() => handleCopyText(prompt.id)} className={`px-3 py-1 text-xs text-white rounded transition-colors w-20 ${copiedPromptId === prompt.id ? 'bg-green-600' : 'bg-gray-500'}`}>
                                         {copiedPromptId === prompt.id ? 'Copied!' : 'Copy'}
                                     </button>
                                     <button onClick={() => handleAction(archivePrompt(prompt.id, !prompt.is_archived), {loading: 'Updating...', success: `Prompt ${prompt.is_archived ? 'restored' : 'archived'}.`, error: 'Failed to update.'})} className="p-1.5 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700" title={prompt.is_archived ? 'Unarchive' : 'Archive'}>

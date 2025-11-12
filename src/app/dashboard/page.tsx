@@ -586,7 +586,7 @@ const DashboardContent = () => {
                         <div className="flex-grow">
                             <PromptComposerProvider>
                                 {/* --- THIS IS THE BUILD ERROR --- */}
-                                <PromptComposer templates={templates ?? []} />
+                                <PromptComposer />
                             </PromptComposerProvider>
                         </div>
                     </div>

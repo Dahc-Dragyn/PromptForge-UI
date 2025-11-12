@@ -6,7 +6,8 @@ import Modal from './Modal';
 import { StarIcon } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
 import { apiClient } from '@/lib/apiClient';
-import { usePromptRatings } from '@/hooks/usePromptRatings'; // Import our new hook
+// FIX 1: Import usePrompts, not usePromptRatings
+import { usePrompts } from '@/hooks/usePrompts';
 
 // Define the shape of the version prop locally for this component
 interface Version {
@@ -30,8 +31,10 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
   const [currentRating, setCurrentRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   
-  // Use our SWR hook for rating mutations
-  const { ratePrompt, isSubmitting } = usePromptRatings(promptId);
+  // FIX 2: Use the usePrompts hook to get the mutation function
+  const { ratePrompt } = usePrompts();
+  // FIX 3: Add local state to manage submission status
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Reset state when the modal is opened
   useEffect(() => {
@@ -41,6 +44,7 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
       setError(null);
       setCurrentRating(0);
       setHoverRating(0);
+      setIsSubmitting(false); // Also reset submitting state
     }
   }, [isOpen]);
 
@@ -53,8 +57,12 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
 
     try {
       const startTime = performance.now();
-      // CORRECTED: Use apiClient and relative path
-      const data = await apiClient.post<{ final_text: string }>('/prompts/execute', {
+      
+      // Define the expected response type
+      type ExecuteResponse = { final_text: string };
+
+      // FIX 4: Use the <T, R> generic to tell TypeScript the real return type
+      const data = await apiClient.post<ExecuteResponse, ExecuteResponse>('/prompts/execute', {
         prompt_text: version.prompt_text,
         model: 'gemini-2.5-flash-lite',
         variables: {},
@@ -62,7 +70,7 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
       const endTime = performance.now();
       
       setResult({
-        text: data.final_text,
+        text: data.final_text, // This is now type-safe
         latency: endTime - startTime,
       });
 
@@ -76,11 +84,13 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
   };
 
   const handleRatingSubmit = async (newRating: number) => {
-    if (!result || isSubmitting) return;
+    if (!result || isSubmitting || !version) return; // Ensure version exists
 
+    setIsSubmitting(true);
     setCurrentRating(newRating);
     
-    const promise = ratePrompt(newRating);
+    // FIX 5: Call the correct ratePrompt function with all required args
+    const promise = ratePrompt(promptId, version.version_number, newRating);
 
     toast.promise(promise, {
         loading: 'Saving rating...',
@@ -88,8 +98,14 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
         error: 'Failed to save rating.'
     });
 
-    // Close modal after success
-    promise.then(onClose);
+    try {
+      await promise;
+      onClose(); // Close modal after success
+    } catch (err) {
+      // Error is handled by toast
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!version) return null;
@@ -135,7 +151,7 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
                     onClick={() => handleRatingSubmit(star)}
                     onMouseEnter={() => setHoverRating(star)}
                     onMouseLeave={() => setHoverRating(0)}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting} // This is now tied to our local state
                     className="disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <StarIcon
@@ -151,11 +167,11 @@ const RatingModal = ({ isOpen, onClose, promptId, version }: RatingModalProps) =
             </div>
 
             <button 
-                onClick={handleExecute} 
-                disabled={isLoading}
-                className="w-full py-2 bg-gray-600 text-white rounded hover:bg-gray-500 disabled:opacity-50 font-semibold text-sm transition-colors"
-              >
-                {isLoading ? 'Executing...' : 'Run Again'}
+              onClick={handleExecute} 
+              disabled={isLoading}
+              className="w-full py-2 bg-gray-600 text-white rounded hover:bg-gray-500 disabled:opacity-50 font-semibold text-sm transition-colors"
+            >
+              {isLoading ? 'Executing...' : 'Run Again'}
             </button>
           </div>
         )}

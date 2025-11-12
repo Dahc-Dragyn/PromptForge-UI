@@ -72,8 +72,8 @@ function ClinicContent() {
             ]);
 
             setClinicResults({
-                diagnose: diagnoseRes,
-                breakdown: breakdownRes,
+                diagnose: diagnoseRes.data,
+                breakdown: breakdownRes.data,
             });
 
             toast.success("Clinic analysis complete!", { id: toastId });

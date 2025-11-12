@@ -6,12 +6,10 @@ import toast from 'react-hot-toast';
 import SaveTemplatesModal from './SaveTemplatesModal';
 import { apiClient } from '@/lib/apiClient';
 import AutoSizingTextarea from './AutoSizingTextarea';
-// We DO NOT need AxiosResponse. This was my mistake.
 
 export const AI_MODEL = 'gemini-2.5-flash-lite';
 
 // --- THIS IS THE FINAL FIX (Part 1): A hyper-aggressive meta-prompt ---
-// We are using XML tags to force the AI to focus.
 export const META_PROMPT_BASE = `
 <SYSTEM_TASK>
 You are a raw text generator. Your only task is to generate the raw text for a prompt component based on the user's goal.
@@ -49,7 +47,6 @@ const cleanAiOutput = (text: string | undefined | null): string => {
         /^certainly, here is.../ims,
         /^persona\s*=\s*/ims,
         /^task\s*=\s*/ims,
-        // Add the response from the test log
         /^Sure, I can help with that! Please provide the CMOS sentence[\s\S]*/i
     ];
     
@@ -101,23 +98,24 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ onAiComponentsGenerated, onRe
             // --- Define the expected response type ---
             type AiExecuteResponse = { final_text: string };
 
-            // --- Our apiClient returns the data directly, not the full AxiosResponse ---
-            const personaPromise = apiClient.post<AiExecuteResponse>('/prompts/execute', executePayload(personaMetaPrompt));
-            const taskPromise = apiClient.post<AiExecuteResponse>('/prompts/execute', executePayload(taskMetaPrompt));
-            const namePromise = apiClient.post<AiExecuteResponse>('/prompts/execute', executePayload(nameMetaPrompt));
+            // --- FIX: Tell TypeScript the apiClient unwraps the response. ---
+            // The return type `R` is the data itself, not the full AxiosResponse.
+            const personaPromise = apiClient.post<AiExecuteResponse, AiExecuteResponse>('/prompts/execute', executePayload(personaMetaPrompt));
+            const taskPromise = apiClient.post<AiExecuteResponse, AiExecuteResponse>('/prompts/execute', executePayload(taskMetaPrompt));
+            const namePromise = apiClient.post<AiExecuteResponse, AiExecuteResponse>('/prompts/execute', executePayload(nameMetaPrompt));
             
-            // --- THIS IS THE FIX: The results are the data objects, not AxiosResponse ---
+            // --- The results are the data objects, not AxiosResponse ---
             const [personaRes, taskRes, nameRes] = await Promise.all([
                 personaPromise, 
                 taskPromise, 
                 namePromise
             ]);
     
-            // --- THIS IS THE FIX: Access final_text directly (like your original code) ---
+            // --- THIS IS THE FIX: Access final_text directly (no .data) ---
             // --- and run it through our new, aggressive cleaning function ---
             const generatedPersona = cleanAiOutput(personaRes.final_text);
             const generatedTask = cleanAiOutput(taskRes.final_text);
-            const generatedName = cleanAiOutput(nameRes.final_text)?.replace(/"/g, '') || 'AI Generated';
+            const generatedName = cleanAiOutput(nameRes.final_text).replace(/"/g, '') || 'AI Generated';
             // --- END OF FIX ---
     
             // This check catches the conversational AI *after* cleaning
@@ -144,7 +142,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ onAiComponentsGenerated, onRe
             if (err && (err as any).response?.data?.detail) {
                 errorMessage = (err as any).response.data.detail;
             } else if (err && (err as any).message) {
-                 // Handle runtime errors like the 'undefined' property access
+                 // Handle runtime errors
                 errorMessage = (err as any).message;
             }
 
