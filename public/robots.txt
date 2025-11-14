@@ -1,0 +1,74 @@
+# ==========================================================
+# PromptForge Robots.txt
+# Hybrid Strategy: Optimized for SEO, AEO, and IP Protection
+# ==========================================================
+
+# ----------------------------------------------------------
+# 1. Standard Web Crawlers (SEO) & Default Rules
+# ----------------------------------------------------------
+User-agent: *
+
+# Block internal, authenticated, or low-value app pages
+# This saves crawl budget and keeps private areas private.
+Disallow: /login
+Disallow: /signup
+Disallow: /dashboard
+Disallow: /sandbox
+Disallow: /clinic
+Disallow: /analyze
+Disallow: /benchmark
+Disallow: /test-prompts
+Disallow: /api-proxy/
+Disallow: /prompts/starred
+Disallow: /prompts/*
+Disallow: /templates/*
+Disallow: /staging
+Disallow: /preview
+
+# Prevent crawling of common noise directories
+Disallow: /static/
+Disallow: /_next/
+Disallow: /assets/private/
+
+# Explicitly allow high-value public pages
+Allow: /
+Allow: /guide
+Allow: /prompts/all
+Allow: /templates/all
+Allow: /search
+
+# ----------------------------------------------------------
+# 2. AI Training Bots (IP Protection)
+# We BLOCK these bots to prevent them from using 
+# our valuable content to train their models.
+# ----------------------------------------------------------
+User-agent: GPTBot
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+# ----------------------------------------------------------
+# 3. AI Answer Engines (AEO)
+# We ALLOW these bots so they can crawl our site
+# and cite us in their live answers.
+# ----------------------------------------------------------
+User-agent: Google-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: YouBot
+Allow: /
+
+User-agent: NeevaAI
+Allow: /
+
+# ----------------------------------------------------------
+# 4. Sitemap (Tells all bots where our main content is)
+# ----------------------------------------------------------
+Sitemap: https://promptforge.aiyoda.app/sitemap.xml

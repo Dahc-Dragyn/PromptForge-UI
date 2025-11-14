@@ -1,0 +1,14 @@
+# Exclude node_modules from all directories
+**/node_modules
+
+# Exclude Next.js build output
+**/.next
+
+# Exclude IDE and local environment files
+.DS_Store
+*.log
+.env
+.env.local
+.env.development
+.env.production
+.vscode

@@ -1,0 +1,16 @@
+# PromptForge
+> A complete workbench for AI prompting. Build, test, save, and optimize prompts for models like ChatGPT, Gemini, and Llama in one place.
+
+## Core App Features
+- [Prompt Tester](https://promptforge.aiyoda.app/test): Side-by-side comparison tool for testing prompt variations.
+- [Prompt Library](https://promptforge.aiyoda.app/library): A community-driven library of pre-built, optimized prompts.
+- [Prompt Optimization](https://promptforge.aiyoda.app/optimize): Use AI to analyze and refine your prompts for better performance.
+
+## Guides & Documentation
+- [Getting Started Guide](https://promptforge.aiyoda.app/docs/getting-started): How to set up your first PromptForge project.
+- [API Reference](https://promptforge.aiyoda.app/docs/api): How to integrate PromptForge with your own applications.
+- [What is Prompt Engineering?](https://promptforge.aiyoda.app/blog/what-is-prompt-engineering): Our foundational guide to prompt design principles.
+
+## About & Policies
+- [About Us](https://promptforge.aiyoda.app/about): The mission and vision behind PromptForge.
+- [Terms of Service](https://promptforge.aiyoda.app/tos): How to use PromptForge legally and responsibly.

@@ -1,0 +1,19 @@
+# Exclude all node_modules from all directories
+**/node_modules
+
+# Exclude Next.js build output
+**/.next
+
+# CRITICAL: Exclude the Firebase Functions directory.
+# This is what is breaking the build.
+/functions/
+
+# Exclude IDE and local environment files
+.DS_Store
+*.log
+.env
+.env.local
+.env.development
+.env.production
+.vscode
+firebase-debug.log
