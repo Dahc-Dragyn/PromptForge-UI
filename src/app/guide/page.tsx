@@ -1,334 +1,281 @@
 'use client';
 
 import {
-    BookOpenIcon, // Workflow Guide
-    SparklesIcon, // Auto-Optimize / Automatic Composer
-    BeakerIcon, // Sandbox
-    CpuChipIcon, // Benchmark
-    RectangleGroupIcon, // Manual Composer
-    ArchiveBoxIcon, // Template Library
-    ClipboardDocumentListIcon, // AI Template Search
-    ChartPieIcon, // Prompt Clinic (Matches Navbar)
-    KeyIcon, // API Key Management
-    CircleStackIcon, // Visual Agent Optimizer
+    BookOpenIcon,
+    SparklesIcon,
+    BeakerIcon,
+    CpuChipIcon,
+    RectangleGroupIcon,
+    ArchiveBoxIcon,
+    ClipboardDocumentListIcon,
+    ChartPieIcon,
+    KeyIcon,
+    CircleStackIcon,
 } from '@heroicons/react/24/outline';
 
 const GuidePage = () => {
     return (
         <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-8">
             <div className="max-w-4xl mx-auto">
-                <h1 className="text-3xl font-bold mb-4">
-                    PromptForge Workflow Guide
-                </h1>
+
+                {/* --- Article Schema --- */}
+                <div itemScope itemType="https://schema.org/Article">
+                    <meta
+                        itemProp="headline"
+                        content="PromptForge Guide – Prompt Engineering Workflows"
+                    />
+                    <meta itemProp="author" content="PromptForge Team" />
+                    <meta itemProp="datePublished" content="2024-10-01" />
+                    <meta itemProp="dateModified" content="2025-11-14" />
+                </div>
+
+                <h1 className="text-3xl font-bold mb-4">PromptForge Workflow Guide</h1>
+
+                {/* --- Intro Paragraph --- */}
                 <p className="text-lg text-gray-300 mb-8">
-                    Prompt engineering is a process. This guide shows how to use
-                    PromptForge to master the three phases of that process:
-                    <strong className="text-white"> Composition</strong>,
-                    <strong className="text-white"> Optimization</strong>, and
-                    <strong className="text-white"> Evaluation</strong>.
+                    This PromptForge guide walks you step-by-step through the{' '}
+                    <strong className="text-white">prompt engineering workflow</strong>,
+                    showing you how to compose, optimize, and evaluate prompts in a way
+                    that improves{' '}
+                    <strong className="text-white">AEO (Answer Engine Optimization)</strong>
+                    and overall{' '}
+                    <strong className="text-white">LLM prompt performance</strong>.
                 </p>
 
+                {/* --- Table of Contents (cleaned) --- */}
+                <nav className="mb-10 border-l-4 border-indigo-400 pl-4 text-gray-300">
+                    <h3 className="text-xl font-semibold mb-3 text-white">On This Page</h3>
+                    <ol className="space-y-2">
+                        <li>
+                            <a href="#composition" className="hover:text-indigo-300">
+                                How to Compose Prompts
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#optimization" className="hover:text-indigo-300">
+                                How to Optimize Prompts
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#evaluation" className="hover:text-indigo-300">
+                                How to Evaluate Prompts
+                            </a>
+                        </li>
+                    </ol>
+                </nav>
+
                 {/* --- 1. COMPOSITION --- */}
-                <h2 className="text-2xl font-bold mb-4 text-indigo-300">
-                    1. Composition: Building Your Prompt
+                <h2 id="composition" className="text-2xl font-bold mb-4 text-indigo-300">
+                    1. How to Compose Prompts in PromptForge
                 </h2>
+
+                <div className="bg-indigo-950/30 border border-indigo-600 rounded-md p-3 mb-6 text-sm">
+                    <strong>Quick Answer:</strong> You compose prompts in PromptForge
+                    using either an AI-assisted generator or the Manual Composer
+                    to stack reusable Persona, Task, and Style templates.
+                </div>
+
                 <p className="text-gray-300 mb-6">
-                    The Dashboard gives you <strong className="text-white">two ways</strong> to build a complete prompt:
+                    The Dashboard gives you <strong className="text-white">two ways</strong>{' '}
+                    to build a complete prompt:
                 </p>
 
                 <div className="space-y-6">
-                    {/* --- 1. AI-Assisted Template Creation (The "Easy Mode") --- */}
+                    {/* --- AI Assisted Creation --- */}
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* SparklesIcon for AI/Automatic functionality */}
-                            <SparklesIcon className="h-6 w-6" />
-                            AI-Assisted Template and Prompt Creation (The "Easy Mode")
+                            <SparklesIcon className="h-6 w-6" aria-hidden="true" />
+                            What is AI-Assisted Template Creation?
                         </h3>
+
                         <p className="text-gray-300">
-                            <strong>What it is:</strong> This tool uses AI to
-                            help you create new, high-quality templates and prompts *for* your
-                            library. You just give it a simple goal.
+                            <strong>What it is:</strong> A tool that uses AI to help you
+                            create new, high-quality templates and prompts.
                         </p>
-                        
-                        {/* --- START: UPDATED WORKFLOW TEXT --- */}
+
                         <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it Works:</strong> You type a simple
-                            description (e.g., "A persona for a skeptical
-                            pirate") and add tags. The AI will then{' '}
-                            <strong>generate three things: a Persona, a Task, and a Prompt.</strong>
-                            {' '}You must save the new Persona and Task to use them,
-                            but the new Prompt is available immediately.
+                            <strong>How it Works:</strong> Enter a goal and the AI generates
+                            a Persona, Task, and Prompt. Save the Persona and Task.
                         </p>
-                        {/* --- END: UPDATED WORKFLOW TEXT --- */}
 
                         <a
-                            href="/dashboard" // Assumes AI Composer is also on the dashboard
+                            href="/dashboard"
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
-                            Go to the Composer &rarr;
+                            Learn more about the AI-Assisted Composer →
                         </a>
                     </div>
-                    
-                    {/* --- 2. Prompt Composer (Manual - The "Pro Mode") - Original item 3, now item 2 --- */}
+
+                    {/* --- Manual Composer --- */}
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* RectangleGroupIcon for manual, structured composition */}
-                            <RectangleGroupIcon className="h-6 w-6" />
-                            Prompt Composer (Manual - The "Pro Mode")
+                            <RectangleGroupIcon className="h-6 w-6" aria-hidden="true" />
+                            How does Manual Prompt Composition work?
                         </h3>
+
                         <p className="text-gray-300 mb-4">
-                            <strong>What it is:</strong> This tool gives you
-                            full, step-by-step control. You build a prompt by
-                            "stacking" your saved templates and adding custom
-                            instructions.
+                            <strong>What it is:</strong> A step-by-step builder for
+                            assembling prompts using reusable components.
                         </p>
+
                         <div className="text-sm text-gray-400">
-                            <strong>How to Use it (Step-by-Step):</strong>
+                            {/* --- HowTo Schema --- */}
+                            <div itemScope itemType="https://schema.org/HowTo">
+                                <meta
+                                    itemProp="name"
+                                    content="How to Compose Prompts Manually in PromptForge"
+                                />
+
+                                <div itemProp="step" itemScope itemType="https://schema.org/HowToStep">
+                                    <meta itemProp="name" content="Select templates" />
+                                    <meta
+                                        itemProp="text"
+                                        content="Choose your Persona, Task, and Style templates."
+                                    />
+                                </div>
+
+                                <div itemProp="step" itemScope itemType="https://schema.org/HowToStep">
+                                    <meta itemProp="name" content="Add Instructions" />
+                                    <meta
+                                        itemProp="text"
+                                        content="Add additional instructions into the text box."
+                                    />
+                                </div>
+
+                                <div itemProp="step" itemScope itemType="https://schema.org/HowToStep">
+                                    <meta itemProp="name" content="Run & Test" />
+                                    <meta
+                                        itemProp="text"
+                                        content="The system combines all text blocks into one prompt."
+                                    />
+                                </div>
+                            </div>
+
+                            {/* --- Step-by-Step UI --- */}
+                            <strong>How to Use it:</strong>
                             <ol className="list-decimal list-outside space-y-2 pl-5 mt-2 text-gray-300">
-                                <li>
-                                    <strong>Select Templates:</strong> Use the
-                                    dropdowns to select your saved{' '}
-                                    <strong>`Persona`</strong>,{' '}
-                                    <strong>`Task`</strong>, and{' '}
-                                    <strong>`Style`</strong> templates.
-                                </li>
-                                <li>
-                                    <strong>Add Instructions:</strong> Type any
-                                    extra details, input text, or specific rules
-                                    into the "Additional Instructions" text box.
-                                </li>
-                                <li>
-                                    <strong>Run & Test:</strong> The tool combines
-                                    all these text blocks into one large prompt
-                                    and sends it to the AI for you to see the
-                                    result.
-                                </li>
+                                <li>Select Persona, Task, and Style templates.</li>
+                                <li>Add any extra instructions.</li>
+                                <li>Run & Test your combined prompt.</li>
                             </ol>
                         </div>
+
                         <a
-                            href="/dashboard" // Assumes Manual Composer is on the main dashboard
+                            href="/dashboard"
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
-                            Go to the Composer &rarr;
+                            Explore the Manual Prompt Composer workflow →
                         </a>
                     </div>
-                    
-                    {/* --- Added transitional text here to follow the manual composer --- */}
-                    <p className="text-gray-300 mb-6">
-                        A great prompt is built from clear elements. These tools help you compose them.
-                    </p>
 
-                    {/* --- 3. Template Library: Your Reusable Prompt Pieces - Original item 1, now item 3 --- */}
+                    {/* --- Template Library --- */}
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* ArchiveBoxIcon for storing pieces (Templates) */}
-                            <ArchiveBoxIcon className="h-6 w-6" />
-                            Template Library: Your Reusable Prompt Pieces
+                            <ArchiveBoxIcon className="h-6 w-6" aria-hidden="true" />
+                            What is the Template Library?
                         </h3>
+
                         <p className="text-gray-300">
-                            <strong>What it is:</strong> This is your personal
-                            toolbox for prompt "pieces." Instead of re-typing the
-                            same persona, task, or style rules every time, you
-                            save them here.
+                            <strong>What it is:</strong> Your toolbox for reusable templates.
                         </p>
+
                         <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it Works:</strong> When you create a
-                            template, you save a block of text and give it a
-                            type: <strong>`Persona`</strong> (e.g., "You are a
-                            senior copywriter"), <strong>`Task`</strong> (e.g.,
-                            "Write a blog post intro"), or{' '}
-                            <strong>`Style`</strong> (e.g., "Format the output as
-                            a JSON object"). These are the building blocks for
-                            the Manual Composer.
+                            Store Personas, Tasks, and Styles so you don’t need to rebuild them.
                         </p>
+
                         <a
                             href="/dashboard#template-library"
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
-                            Go to your Templates &rarr;
+                            Manage your reusable prompt templates →
                         </a>
                     </div>
                 </div>
 
                 {/* --- 2. OPTIMIZATION --- */}
-                <h2 className="text-2xl font-bold mb-4 mt-12 text-indigo-300">
-                    2. Optimization: Improving Your Prompt
+                <h2 id="optimization" className="text-2xl font-bold mb-4 mt-12 text-indigo-300">
+                    2. How to Optimize Your Prompts
                 </h2>
+
+                <div className="bg-indigo-950/30 border border-indigo-600 rounded-md p-3 mb-6 text-sm">
+                    <strong>Quick Answer:</strong> Optimize prompts using the{' '}
+                    <strong>Prompt Clinic</strong>, which scores your prompt and suggests improvements.
+                </div>
+
                 <p className="text-gray-300 mb-6">
-                    A good first draft is rarely perfect. These tools automate
-                    expert "best practices" to make your prompt more robust.
+                    These tools help refine clarity, structure, and effectiveness.
                 </p>
 
                 <div className="space-y-6">
-                    {/* --- FIX: Merged "Auto-Optimize" into "Diagnose" --- */}
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* CHANGED: Using ChartPieIcon to match Navbar's Prompt Clinic icon */}
-                            <ChartPieIcon className="h-6 w-6" />
-                            Prompt Clinic (Diagnose & Auto-Optimize)
+                            <ChartPieIcon className="h-6 w-6" aria-hidden="true" />
+                            What does the Prompt Clinic evaluate?
                         </h3>
+
                         <p className="text-gray-300 mb-4">
-                            <strong>What it is:</strong> Think of this as a
-                            "spell-check" for your prompt's quality. It reads
-                            your prompt, gives you a score, and provides an
-                            AI-generated improvement.
+                            <strong>What it is:</strong> A diagnostic tool for analyzing prompts.
                         </p>
+
                         <div className="text-sm text-gray-400">
-                            <strong>How it Works:</strong> It grades your prompt
-                            on a few key areas:
+                            <strong>How it Works:</strong>
                             <ul className="list-disc list-outside space-y-2 pl-5 mt-2 text-gray-300">
-                                <li>
-                                    <strong>Clarity:</strong> Is your request
-                                    easy to understand, or is it vague?
-                                </li>
-                                <li>
-                                    <strong>Specificity:</strong> Did you give
-                                    enough detail? (e.g., "Write 3 paragraphs"
-                                    is better than "Write about this.")
-                                </li>
-                                <li>
-                                    <strong>Constraints:</strong> Did you set
-                                    clear rules? (e.g., "Do not use technical
-                                    jargon.")
-                                </li>
+                                <li><strong>Clarity:</strong> Is the prompt easily understood?</li>
+                                <li><strong>Specificity:</strong> Is the goal well-defined?</li>
+                                <li><strong>Constraints:</strong> Are rules and limits explicit?</li>
                             </ul>
-                            <p className="text-gray-300 mt-3 font-semibold">
-                                The "Auto-Optimize" Feature:
-                            </p>
+
+                            <p className="text-gray-300 mt-3 font-semibold">Auto-Optimize:</p>
                             <p className="text-gray-300 mt-1">
-                                The clinic doesn't just give you a report. It
-                                also provides a <strong>"Suggested
-                                Improvement"</strong>—an "easy button" rewrite
-                                of your prompt. You can then save this new
-                                version or send it directly to the Sandbox to
-                                A/B test it against your original.
+                                The Clinic generates a cleaner, stronger version of your prompt.
                             </p>
                         </div>
+
                         <a
                             href="/clinic"
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
-                            Go to the Prompt Clinic &rarr;
+                            View full Prompt Clinic examples →
                         </a>
                     </div>
                 </div>
 
                 {/* --- 3. EVALUATION --- */}
-                <h2 className="text-2xl font-bold mb-4 mt-12 text-indigo-300">
-                    3. Evaluation: Proving It Works
+                <h2 id="evaluation" className="text-2xl font-bold mb-4 mt-12 text-indigo-300">
+                    3. How to Evaluate Your Prompts
                 </h2>
+
+                <div className="bg-indigo-950/30 border border-indigo-600 rounded-md p-3 mb-6 text-sm">
+                    <strong>Quick Answer:</strong> Evaluate prompts using A/B testing in the{' '}
+                    <strong>Sandbox</strong> or by comparing outputs across LLMs with{' '}
+                    <strong>Benchmark</strong>.
+                </div>
+
                 <p className="text-gray-300 mb-6">
-                    Don't guess. Test your prompts to prove they are accurate,
-                    robust, and efficient.
+                    Testing removes guesswork and validates prompt quality.
                 </p>
 
                 <div className="space-y-6">
                     <div className="bg-gray-800 p-6 rounded-lg">
                         <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* BeakerIcon for Sandbox (A/B Testing) */}
-                            <BeakerIcon className="h-6 w-6" />
-                            Sandbox (A/B Testing)
+                            <BeakerIcon className="h-6 w-6" aria-hidden="true" />
+                            How does A/B testing work in the Sandbox?
                         </h3>
+
                         <p className="text-gray-300">
-                            <strong>Use this to answer:</strong> "Is my new
-                            prompt <em>really</em> better than my old one?"
+                            <strong>Use this to answer:</strong> “Is my new prompt better?”
                         </p>
+
                         <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it Works:</strong> It lets you load two
-                            (or more) prompts side-by-side with the{' '}
-                            <em>same</em> input. You can directly compare the
-                            AI's answers to see which prompt performed better.
+                            Compare two prompts with identical inputs and evaluate which performs better.
                         </p>
+
                         <a
                             href="/sandbox"
                             className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
                         >
-                            Go to the Sandbox &rarr;
+                            Try Sandbox A/B testing →
                         </a>
-                    </div>
-
-                    {/* --- FIX: Removed "cost-effective" and "cheapest" --- */}
-                    <div className="bg-gray-800 p-6 rounded-lg">
-                        <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* CpuChipIcon for Benchmark (Model Testing) */}
-                            <CpuChipIcon className="h-6 w-6" />
-                            Benchmark (Model Testing)
-                        </h3>
-                        <p className="text-gray-300">
-                            <strong>Use this to answer:</strong> "Which model is
-                            the most <strong>performant</strong> for my prompt?"
-                        </p>
-                        <p className="text-sm text-gray-400 mt-2">
-                            <strong>How it Works:</strong> You write{' '}
-                            <em>one</em> prompt and run it against multiple
-                            different models (like Gemini, GPT-4o Mini, etc and More to come.)
-                            all at the same time. This is the perfect way to
-                            find the <strong>fastest</strong> model that gives
-                            you the high-quality result you need by comparing
-                            their latency and output.
-                        </p>
-                        <a
-                            href="/benchmark"
-                            className="text-blue-400 hover:text-blue-300 text-sm font-medium mt-4 inline-block"
-                        >
-                            Go to Benchmark &rarr;
-                        </a>
-                    </div>
-                </div>
-
-                {/* --- 4. FUTURE FEATURES --- */}
-                <h2 className="text-2xl font-bold mb-4 mt-12 text-indigo-300">
-                    Future Features (Coming Soon)
-                </h2>
-                <p className="text-gray-300 mb-6">
-                    We are actively working on expanding our toolkit to support
-                    the full agentic workflow.
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
-                        <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* ClipboardDocumentListIcon for search/list function */}
-                            <ClipboardDocumentListIcon className="h-6 w-6" />
-                            AI Template Search
-                            <span className="bg-yellow-600 text-yellow-50 text-xs font-bold px-2 py-0.5 rounded-full">
-                                SOON
-                            </span>
-                        </h3>
-                        <p className="text-gray-400">
-                            An AI-powered search to help you find the perfect
-                            `Context` or `Persona` template for your task.
-                        </p>
-                    </div>
-
-                    <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
-                        <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* KeyIcon for API Key Management */}
-                            <KeyIcon className="h-6 w-6" />
-                            User API Key Management
-                            <span className="bg-yellow-600 text-yellow-50 text-xs font-bold px-2 py-0.5 rounded-full">
-                                SOON
-                            </span>
-                        </h3>
-                        <p className="text-gray-400">
-                            A secure vault for you to run tests and executions
-                            using your own personal API keys.
-                        </p>
-                    </div>
-
-                    <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700 md:col-span-2">
-                        <h3 className="text-xl font-semibold mb-2 flex items-center gap-2">
-                            {/* CircleStackIcon for complex, visual optimization */}
-                            <CircleStackIcon className="h-6 w-6" />
-                            Visual Agent Optimizer
-                            <span className="bg-yellow-600 text-yellow-50 text-xs font-bold px-2 py-0.5 rounded-full">
-                                SOON
-                            </span>
-                        </h3>
-                        <p className="text-gray-400">
-                            The ultimate power-user tool. A graph-based UI to
-                            build, debug, and optimize multi-step AI agents.
-                        </p>
                     </div>
                 </div>
             </div>

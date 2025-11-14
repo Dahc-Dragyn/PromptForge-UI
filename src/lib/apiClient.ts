@@ -1,18 +1,27 @@
 // src/lib/apiClient.ts
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { auth } from './firebase';
 
-const apiClient = axios.create({
+// --- AXIOS INSTANCE 1: PRIVATE (Used for all authenticated requests) ---
+const apiClient: AxiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+// --- AXIOS INSTANCE 2: PUBLIC (Bypasses auth interceptor for unauthenticated data) ---
+const publicClient: AxiosInstance = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+
 /**
- * This is the crucial fix. This function returns a promise that resolves
+ * This function returns a promise that resolves
  * only when Firebase has a confirmed user, ensuring we always have a valid token.
- * This solves the race condition on initial page load.
  */
 const getFreshToken = (): Promise<string | null> => {
   return new Promise((resolve) => {
@@ -32,7 +41,7 @@ const getFreshToken = (): Promise<string | null> => {
   });
 };
 
-// Axios interceptor to add the token to every request
+// --- PRIVATE CLIENT INTERCEPTORS (Applies to apiClient only) ---
 apiClient.interceptors.request.use(
   async (config) => {
     const token = await getFreshToken();
@@ -46,16 +55,30 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Add a response interceptor for unified error handling
-apiClient.interceptors.response.use(
-  // This is the key: we return response.data directly
-  (response) => response.data,
-  (error) => {
-    // Handle specific errors like 401 Unauthorized, 403 Forbidden, etc.
+// --- RESPONSE INTERCEPTORS (Applied to BOTH clients for unified handling) ---
+
+// This interceptor handles data return and is applied to both private and public clients.
+const responseInterceptor = (response: any) => response.data;
+
+// This interceptor handles error messages and is applied to both.
+const errorInterceptor = (error: any) => {
     const errorMessage = error.response?.data?.detail || error.message;
     console.error('API Error:', errorMessage);
     return Promise.reject(error);
-  }
-);
+};
 
-export { apiClient };
+// Apply unified response interceptors to both private and public clients
+apiClient.interceptors.response.use(responseInterceptor, errorInterceptor);
+publicClient.interceptors.response.use(responseInterceptor, errorInterceptor);
+
+
+/**
+ * Public helper function for fast, unauthenticated GET requests.
+ * Use this for pages that should be indexed by search engines and AI crawlers.
+ * @param url The API endpoint (e.g., /public-prompts).
+ */
+const publicApiGet = <T>(url: string): Promise<T> => {
+    return publicClient.get<T>(url);
+};
+
+export { apiClient, publicApiGet };

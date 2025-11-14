@@ -1,3 +1,11 @@
+// This ensures that search engines and AI crawlers skip this private page.
+export const metadata = {
+  robots: {
+      index: false, // Prevents the page from being indexed in search results
+      follow: false, // Prevents crawlers from following links on this page
+  },
+};
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
