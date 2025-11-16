@@ -1,12 +1,10 @@
-// src/components/SendToLlm.tsx
 'use client';
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { apiClient } from '@/lib/apiClient';
 import { PromptVersion } from '@/types/prompt';
-// 1. We DO NOT need AxiosResponse. This was the bug.
-// import { AxiosResponse } from 'axios';
+import { copyTextAsPromise } from '@/lib/clipboard'; // <-- 1. IMPORT THE NEW UTILITY
 
 type LlmService = 'ChatGPT' | 'Gemini' | 'Grok';
 
@@ -52,21 +50,24 @@ const SendToLlm = ({ promptId }: SendToLlmProps) => {
     const toastId = toast.loading(`Getting latest prompt text...`);
 
     try {
-      // This function will now work
-      const textToCopy = await fetchLatestPromptText();
+      // --- THIS IS THE CORE FIX ---
 
-      await navigator.clipboard.writeText(textToCopy);
+      // 2. Don't await the fetch. Get the Promise for the text.
+      const textPromise = fetchLatestPromptText();
 
-      // --- START OF REQUESTED CHANGE ---
-      // Set toast message based on the service
+      // 3. Pass the promise directly to our new utility.
+      // It handles the clipboard write in a way Safari trusts.
+      await copyTextAsPromise(textPromise);
+
+      // --- END OF CORE FIX ---
+
+      // This logic now runs *after* the copy is successful
       const successMessage =
         service === 'ChatGPT'
           ? 'Copied! Opening ChatGPT (will auto-paste)...'
           : 'Prompt has been copied to clickboard please paste into next tab.';
 
-      // This should now correctly dismiss the loading toast
       toast.success(successMessage, { id: toastId });
-      // --- END OF REQUESTED CHANGE ---
 
       setTimeout(() => {
         window.open(LLM_URLS[service], '_blank');
