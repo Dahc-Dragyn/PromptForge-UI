@@ -1,22 +1,14 @@
-// This ensures that search engines and AI crawlers skip this private page.
-export const metadata = {
-  robots: {
-      index: false, // Prevents the page from being indexed in search results
-      follow: false, // Prevents crawlers from following links on this page
-  },
-};
-
 'use client';
 
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { 
-  ArrowLeftIcon, 
+import {
+  ArrowLeftIcon,
   MagnifyingGlassIcon,
   ArchiveBoxIcon,
   ArrowUturnLeftIcon,
-  TrashIcon
+  TrashIcon,
 } from '@heroicons/react/24/solid';
 import { usePrompts } from '@/hooks/usePrompts';
 import { Prompt, PromptVersion } from '@/types/prompt';
@@ -24,44 +16,59 @@ import { useAuth } from '@/context/AuthContext';
 import { apiClient } from '@/lib/apiClient';
 import SendToLlm from '@/components/SendToLlm';
 import StarRating from '@/components/StarRating';
+import { copyTextAsPromise } from '@/lib/clipboard'; // <-- 1. IMPORT THE UTILITY
 
 type TabState = 'active' | 'archived';
+
+// 2. CREATE A HELPER FUNCTION TO GET THE TEXT PROMISE
+const fetchLatestPromptText = async (promptId: string): Promise<string> => {
+  const versions = await apiClient.get<PromptVersion[]>(
+    `/prompts/${promptId}/versions`
+  );
+
+  // Note: Assuming apiClient unwraps .data by default
+  if (!versions || !Array.isArray(versions) || versions.length === 0)
+    throw new Error('This prompt has no versions to copy.');
+
+  const latestVersion = [...versions].sort(
+    (a, b) => (b.version_number ?? 0) - (a.version_number ?? 0)
+  )[0];
+
+  return latestVersion.prompt_text;
+};
 
 export default function AllPromptsPage() {
   const { user } = useAuth();
   const [currentTab, setCurrentTab] = useState<TabState>('active');
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   // State for interaction
   const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
   const [ratedInSession, setRatedInSession] = useState<Set<string>>(new Set());
 
   // Fetch active prompts and mutation functions from one hook
-  const { 
-    prompts: activePrompts, 
+  const {
+    prompts: activePrompts,
     isLoading: isLoadingActive,
     deletePrompt,
     archivePrompt,
     ratePrompt,
   } = usePrompts(false);
-  
+
   // Fetch all prompts (including archived) from another
-  const { 
-    prompts: allPrompts, 
-    isLoading: isLoadingAll 
-  } = usePrompts(true);
+  const { prompts: allPrompts, isLoading: isLoadingAll } = usePrompts(true);
 
   // Derive archived prompts and counts
   const { archivedPrompts, activeCount, archivedCount } = useMemo(() => {
     const all = allPrompts || [];
     const active = activePrompts || [];
-    
+
     // Explicitly type 'p' as Prompt
     const activeIdSet = new Set(active.map((p: Prompt) => p.id));
-    
+
     // Explicitly type 'p' as Prompt
     const archived = all.filter((p: Prompt) => !activeIdSet.has(p.id));
-    
+
     return {
       archivedPrompts: archived,
       activeCount: active.length,
@@ -80,10 +87,13 @@ export default function AllPromptsPage() {
     if (!searchTerm) return promptsToDisplay;
 
     // Explicitly type 'prompt' as Prompt
-    return promptsToDisplay.filter((prompt: Prompt) =>
-      prompt.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (prompt.task_description && 
-       prompt.task_description.toLowerCase().includes(searchTerm.toLowerCase()))
+    return promptsToDisplay.filter(
+      (prompt: Prompt) =>
+        prompt.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (prompt.task_description &&
+          prompt.task_description
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()))
     );
   }, [promptsToDisplay, searchTerm]);
 
@@ -98,22 +108,17 @@ export default function AllPromptsPage() {
     return toast.promise(actionPromise, messages);
   };
 
+  // 3. REFACTOR handleCopyText
   const handleCopyText = async (promptId: string) => {
     setCopiedPromptId(promptId);
     const toastId = toast.loading('Copying...');
     try {
-      const versions = (await apiClient.get<PromptVersion[]>(
-        `/prompts/${promptId}/versions`
-      )) as unknown as PromptVersion[]; 
+      // Get the PROMISE, don't await it
+      const textPromise = fetchLatestPromptText(promptId);
 
-      if (!versions || versions.length === 0)
-        throw new Error('This prompt has no versions to copy.');
-      
-      const latestVersion = versions.sort(
-        (a, b) => b.version_number - a.version_number
-      )[0];
-      
-      await navigator.clipboard.writeText(latestVersion.prompt_text);
+      // Pass the PROMISE to the utility
+      await copyTextAsPromise(textPromise);
+
       toast.success('Copied to clipboard!', { id: toastId });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to copy.';
@@ -153,7 +158,11 @@ export default function AllPromptsPage() {
   // Helper to render the full-featured list
   const renderPromptList = () => {
     if (isLoading) {
-      return <div className="text-center text-gray-400 mt-8">Loading prompts...</div>;
+      return (
+        <div className="text-center text-gray-400 mt-8">
+          Loading prompts...
+        </div>
+      );
     }
 
     if (filteredPrompts.length === 0) {
@@ -169,10 +178,7 @@ export default function AllPromptsPage() {
     return (
       <div className="space-y-4 mt-6">
         {filteredPrompts.map((prompt: Prompt) => (
-          <div
-            key={prompt.id}
-            className={`p-4 bg-gray-700/50 rounded-lg`}
-          >
+          <div key={prompt.id} className={`p-4 bg-gray-700/50 rounded-lg`}>
             <div className="flex justify-between items-start">
               <Link
                 href={`/prompts/${prompt.id}`}
@@ -191,9 +197,7 @@ export default function AllPromptsPage() {
             <div className="flex items-center justify-between pt-3 border-t border-gray-700/50">
               <div className="flex items-center flex-wrap gap-x-4 gap-y-2">
                 <StarRating
-                  currentRating={Math.round(
-                    prompt.average_rating || 0
-                  )}
+                  currentRating={Math.round(prompt.average_rating || 0)}
                   disabled={ratedInSession.has(prompt.id)}
                   onRatingChange={(rating) =>
                     handleRate(
@@ -204,7 +208,6 @@ export default function AllPromptsPage() {
                   }
                 />
                 <div className="flex items-center gap-x-2">
-                  {/* --- THIS IS THE FIX --- */}
                   <Link
                     href={`/prompts/${prompt.id}`}
                     className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -219,23 +222,14 @@ export default function AllPromptsPage() {
                         : 'bg-gray-600 hover:bg-gray-500'
                     }`}
                   >
-                    {copiedPromptId === prompt.id
-                      ? 'Copied!'
-                      : 'Copy'}
+                    {copiedPromptId === prompt.id ? 'Copied!' : 'Copy'}
                   </button>
                   <button
                     onClick={() =>
-                      handleArchivePrompt(
-                        prompt.id,
-                        !prompt.is_archived
-                      )
+                      handleArchivePrompt(prompt.id, !prompt.is_archived)
                     }
                     className="p-1.5 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-700"
-                    title={
-                      prompt.is_archived
-                        ? 'Unarchive'
-                        : 'Archive'
-                    }
+                    title={prompt.is_archived ? 'Unarchive' : 'Archive'}
                   >
                     {prompt.is_archived ? (
                       <ArrowUturnLeftIcon className="h-4 w-4" />
@@ -244,9 +238,7 @@ export default function AllPromptsPage() {
                     )}
                   </button>
                   <button
-                    onClick={() =>
-                      handleDeletePrompt(prompt.id)
-                    }
+                    onClick={() => handleDeletePrompt(prompt.id)}
                     className="p-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
                     title="Delete"
                   >
@@ -268,7 +260,10 @@ export default function AllPromptsPage() {
     <div className="min-h-screen bg-gray-900 text-white p-4 md:p-8">
       {/* 1. Return to Dashboard Link */}
       <div className="mb-6">
-        <Link href="/dashboard" className="inline-flex items-center text-sm font-medium text-gray-400 hover:text-white transition-colors">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center text-sm font-medium text-gray-400 hover:text-white transition-colors"
+        >
           <ArrowLeftIcon className="h-4 w-4 mr-2" />
           Return to Dashboard
         </Link>
@@ -310,7 +305,10 @@ export default function AllPromptsPage() {
           <div className="w-full md:max-w-md">
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+                <MagnifyingGlassIcon
+                  className="h-5 w-5 text-gray-400"
+                  aria-hidden="true"
+                />
               </div>
               <input
                 type="text"
@@ -327,7 +325,9 @@ export default function AllPromptsPage() {
 
         {/* 4. Filtered List */}
         <div className="bg-gray-800 rounded-lg shadow p-4 md:p-6">
-          <h2 className="text-xl font-semibold mb-4 capitalize">{currentTab} Prompts</h2>
+          <h2 className="text-xl font-semibold mb-4 capitalize">
+            {currentTab} Prompts
+          </h2>
           {renderPromptList()}
         </div>
       </div>

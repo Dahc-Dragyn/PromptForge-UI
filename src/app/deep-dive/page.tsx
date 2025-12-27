@@ -36,9 +36,9 @@ export default function ResearchHubPage() {
         >
             <div className="max-w-6xl mx-auto">
                 <meta itemProp="headline" content="Official PromptForge LLM Performance & AEO Research Report" />
-                <meta itemProp="author" itemScope itemType="https://schema.org/Person">
+                <div itemProp="author" itemScope itemType="https://schema.org/Person">
                     <meta itemProp="name" content="PromptForge Research Team" />
-                </meta>
+                </div>
                 <meta itemProp="datePublished" content="2025-01-01" /> {/* Static starting date */}
                 <meta itemProp="dateModified" content={new Date().toISOString().split('T')[0]} /> {/* Updates on every build */}
                 

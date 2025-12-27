@@ -69,10 +69,29 @@ export default function Navbar() {
                     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                         <div className="flex h-16 items-center justify-between">
                             <div className="flex items-center">
-                                {/* --- FIX: Logo and flex-shrink-0 div REMOVED --- */}
+                                
+                                {/* --- 1. FIX: LOGO ADDED BACK IN --- */}
+                                <div className="flex-shrink-0">
+                                  <Link
+                                    href="/dashboard"
+                                    className="group flex items-center text-white"
+                                  >
+                                    {/* --- 2. FIX: Using new, small logo --- */}
+                                    <img
+                                      className="h-8 w-8"  /* h-8 w-8 is perfect for a square logo */
+                                      src="/logo.png"     /* <-- Pointing to your NEW file */
+                                      alt="PromptForge"
+                                    />
+                                    <span className="ml-2 text-lg font-semibold text-white group-hover:text-gray-300">
+                                      PromptForge
+                                    </span>
+                                  </Link>
+                                </div>
+                                {/* --- END OF FIX --- */}
+
                                 <div className="hidden md:block">
-                                    {/* --- FIX: Removed ml-10, added smaller margin --- */}
-                                    <div className="ml-4 flex items-baseline space-x-4">
+                                    {/* --- 3. FIX: Restored ml-10 spacing --- */}
+                                    <div className="ml-10 flex items-baseline space-x-4">
                                         {navigation.map((item) => {
                                             const isActive = pathname.startsWith(item.href);
                                             return (
@@ -106,7 +125,7 @@ export default function Navbar() {
                                 </div>
                             </div>
 
-                            {/* --- FIX: Grouped Profile dropdown and Mobile button --- */}
+                            {/* --- Grouped Profile dropdown and Mobile button --- */}
                             <div className="flex items-center">
                                 <div className="hidden md:block">
                                     <div className="ml-4 flex items-center md:ml-6">
@@ -186,21 +205,22 @@ export default function Navbar() {
                                     </Disclosure.Button>
                                 </div>
                             </div>
-                            {/* --- End of FIX group --- */}
+                            {/* --- End of group --- */}
                         </div>
                     </div>
 
                     <Disclosure.Panel className="md:hidden">
                         <div className="space-y-1 px-2 pb-3 pt-2 sm:px-3">
-                            {/* --- FIX: Added mobile logo link --- */}
+                            {/* --- Mobile logo link --- */}
                             <Disclosure.Button
                                 as={Link}
                                 href="/dashboard"
                                 className="group flex items-center rounded-md px-3 py-2 text-base font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
                             >
+                                {/* --- 4. FIX: Use new logo in mobile menu too --- */}
                                 <img
                                     className="h-8 w-8 mr-3"
-                                    src="/globe.svg"
+                                    src="/logo.png" /* <-- Also pointing to your NEW file */
                                     alt="PromptForge"
                                 />
                                 PromptForge
@@ -230,7 +250,7 @@ export default function Navbar() {
                                             aria-hidden="true"
                                         />
                                         {item.name}
-                                    </Disclosure.Button>
+                                    </Disclosure.Button> 
                                 );
                             })}
                         </div>
