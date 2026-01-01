@@ -1,12 +1,11 @@
-// src/hooks/useRecentActivity.ts
 'use client';
 import useSWR from 'swr';
 import { apiClient } from '@/lib/apiClient';
 import { useAuth } from '@/context/AuthContext';
 import { ActivityItem } from '@/types/prompt'; // Import the UI type
 
-// Define the base endpoint for the cache key
-const RECENT_ACTIVITY_ENDPOINT_BASE = '/metrics/activity/recent/';
+// FIX: REMOVED trailing slash. This prevents the 307 Redirect to HTTP.
+const RECENT_ACTIVITY_ENDPOINT_BASE = '/metrics/activity/recent';
 
 // Type for the raw API response
 interface ApiActivity {
@@ -25,6 +24,7 @@ interface ApiActivity {
  * @returns The SWR array cache key, or null if the user is not logged in.
  */
 export const getRecentActivityCacheKey = (limit: number, userId?: string | null): [string, string] | null => {
+  // Result will look like: "/metrics/activity/recent?limit=10" (No slash before ?)
   const endpoint = `${RECENT_ACTIVITY_ENDPOINT_BASE}?limit=${limit}`;
   return userId ? [endpoint, userId] : null;
 };

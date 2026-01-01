@@ -1,4 +1,3 @@
-// src/hooks/usePrompts.ts
 'use client';
 
 import useSWR, { mutate as globalMutate } from 'swr';
@@ -9,9 +8,10 @@ import { useCallback } from 'react';
 import { getRecentActivityCacheKey } from './useRecentActivity';
 
 /* -------------------------------------------------------------------------- */
-/* TYPES & FETCHERS (This is your correct "FINAL BOSS" version) */
+/* TYPES & FETCHERS (Fixed Types to include Slashes) */
 /* -------------------------------------------------------------------------- */
-type PromptListKey = readonly [`/prompts` | `/prompts?include_archived=true`, string];
+// FIX: Added trailing slashes to the keys so SWR matches the new fetch URLs
+type PromptListKey = readonly [`/prompts/` | `/prompts/?include_archived=true`, string];
 type PromptDetailKey = readonly [`/prompts/${string}`, string];
 
 interface CreatePromptData {
@@ -40,12 +40,12 @@ const singleFetcher = async (key: PromptDetailKey): Promise<Prompt | null> => {
 };
 
 /* -------------------------------------------------------------------------- */
-/* NUCLEAR REVALIDATOR (Correct for Create/Delete) */
+/* NUCLEAR REVALIDATOR (Fixed Keys) */
 /* -------------------------------------------------------------------------- */
 const revalidateEverything = (userId: string) => {
-  // 1. Both prompt lists
-  globalMutate([`/prompts`, userId]);
-  globalMutate([`/prompts?include_archived=true`, userId]);
+  // 1. Both prompt lists (FIX: Added Slashes)
+  globalMutate([`/prompts/`, userId]);
+  globalMutate([`/prompts/?include_archived=true`, userId]);
 
   // 2. Recent activity (force re-fetch)
   const activityKey = getRecentActivityCacheKey(10, userId);
@@ -54,13 +54,12 @@ const revalidateEverything = (userId: string) => {
   }
 };
 
-// --- THIS IS THE FIX ---
-// A "Surgical" revalidator *only* for archive, to prevent the blink.
+// "Surgical" revalidator *only* for archive, to prevent the blink.
 const revalidateForArchive = (userId: string, includeArchived: boolean) => {
-  // 1. Revalidate the *other* list
+  // 1. Revalidate the *other* list (FIX: Added Slashes)
   const otherListKey: PromptListKey = includeArchived
-    ? [`/prompts`, userId]
-    : [`/prompts?include_archived=true`, userId];
+    ? [`/prompts/`, userId]
+    : [`/prompts/?include_archived=true`, userId];
   globalMutate(otherListKey);
 
   // 2. Revalidate Recent Activity
@@ -77,16 +76,17 @@ export function usePrompts(includeArchived = false) {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  const endpoint = includeArchived ? '/prompts?include_archived=true' : '/prompts';
+  // FIX: Added trailing slash to the endpoint variable
+  const endpoint = includeArchived ? '/prompts/?include_archived=true' : '/prompts/';
   const key: PromptListKey | null = userId ? [endpoint, userId] : null;
 
   const { data, error, mutate } = useSWR<Prompt[]>(key, listFetcher, {
     keepPreviousData: true,
-    revalidateOnFocus: true, // This is safe now
+    revalidateOnFocus: true, 
     revalidateOnReconnect: true,
   });
 
-  /* CREATE — This is your correct "FINAL BOSS" version */
+  /* CREATE */
   const createPrompt = useCallback(
     async (promptData: CreatePromptData): Promise<Prompt> => {
       if (!userId || !key) throw new Error('Not authenticated');
@@ -97,16 +97,15 @@ export function usePrompts(includeArchived = false) {
         initial_prompt_text: promptData.text,
       };
 
+      // FIX: Ensure slash is present (it was already here, but keeping it consistent)
       const newPrompt = await apiClient.post<Prompt>('/prompts/', payload);
 
       // Optimistic: prepend to THIS list
       await mutate(
         (current: Prompt[] = []) => [newPrompt, ...current],
-        { revalidate: false } // This is CRITICAL: do not re-fetch
+        { revalidate: false }
       );
 
-      // NUCLEAR: Force refresh the OTHER list + recent activity
-      // This is correct for "create"
       revalidateEverything(userId);
 
       return newPrompt;
@@ -114,7 +113,7 @@ export function usePrompts(includeArchived = false) {
     [userId, key, mutate]
   );
 
-  /* ARCHIVE — "Golden Logic" + "Surgical" Revalidate (THE FIX) */
+  /* ARCHIVE */
   const archivePrompt = useCallback(
     async (promptId: string, isArchived: boolean) => {
       if (!userId || !key) return;
@@ -126,17 +125,14 @@ export function usePrompts(includeArchived = false) {
         .map(p => (p.id === promptId ? { ...p, is_archived: isArchived } : p))
         .filter(p => includeArchived || !p.is_archived); // Filter makes it disappear
 
-
       // Optimistic UI update:
       await mutate(optimisticThisList, { revalidate: false });
 
       try {
-        // API Call
+        // API Call (No slash needed for ID endpoints usually)
         await apiClient.patch<Prompt>(`/prompts/${promptId}`, { is_archived: isArchived });
 
-        // --- THIS IS THE FIX ---
-        // Use the "Surgical" revalidator, NOT the "NUCLEAR" one.
-        // This prevents the "blink" race condition.
+        // Use the "Surgical" revalidator
         revalidateForArchive(userId, includeArchived);
 
       } catch (e) {
@@ -148,7 +144,7 @@ export function usePrompts(includeArchived = false) {
     [userId, key, data, mutate, includeArchived]
   );
 
-  /* DELETE — This is your correct "FINAL BOSS" version */
+  /* DELETE */
   const deletePrompt = useCallback(
     async (promptId: string) => {
       if (!userId || !key) return;
@@ -160,8 +156,6 @@ export function usePrompts(includeArchived = false) {
 
       try {
         await apiClient.delete(`/prompts/${promptId}`);
-
-        // "NUCLEAR" revalidation is correct for delete
         revalidateEverything(userId);
       } catch (e) {
         await mutate(current, { revalidate: false }); // Rollback
@@ -171,12 +165,10 @@ export function usePrompts(includeArchived = false) {
     [userId, key, data, mutate]
   );
   
-  /* UPDATE (From your "current code" - fixed for new data model) */
+  /* UPDATE */
   const updatePrompt = useCallback(
     async (promptId: string, updates: { name?: string; task_description?: string }) => {
       if (!userId) throw new Error('User must be logged in.');
-
-      const detailKey: PromptDetailKey | null = promptId && userId ? [`/prompts/${promptId}`, userId] : null;
 
       const current = data ?? [];
 
@@ -188,7 +180,7 @@ export function usePrompts(includeArchived = false) {
         const optimisticData = current.map((p) => (p.id === promptId ? updated : p));
         await mutate(optimisticData, { revalidate: false });
 
-        revalidateEverything(userId); // OK to be nuclear here
+        revalidateEverything(userId);
 
         return updated;
       } catch (e) {
@@ -200,7 +192,7 @@ export function usePrompts(includeArchived = false) {
     [userId, data, mutate]
   );
 
-  /* RATING (From your "current code" - fixed for new data model) */
+  /* RATING */
   const ratePrompt = useCallback(
     async (promptId: string, versionNumber: number, rating: number) => {
       if (!userId || !key) return;
@@ -209,6 +201,8 @@ export function usePrompts(includeArchived = false) {
       const prompt = current.find(p => p.id === promptId);
 
       if (!prompt) {
+        // Metrics endpoints usually don't have trailing slashes in your setup, 
+        // but double check usePromptMetrics if you have issues.
         await apiClient.post('/metrics/rate', { prompt_id: promptId, version_number: versionNumber, rating });
         revalidateEverything(userId);
         return;
@@ -232,7 +226,7 @@ export function usePrompts(includeArchived = false) {
           rating,
         });
 
-        revalidateEverything(userId); // OK to be nuclear here
+        revalidateEverything(userId); 
       } catch (e) {
         await mutate(current, { revalidate: false }); // Rollback
         console.error('Failed to submit rating:', e);
@@ -243,7 +237,7 @@ export function usePrompts(includeArchived = false) {
   );
 
   return {
-    prompts: data ?? [], // Use ?? [] for safety
+    prompts: data ?? [],
     isLoading: !error && !data && !!userId,
     isError: error,
     createPrompt,
@@ -254,7 +248,7 @@ export function usePrompts(includeArchived = false) {
   };
 }
 
-/* usePromptDetail — unchanged and correct */
+/* usePromptDetail */
 export function usePromptDetail(promptId: string | null) {
   const { user } = useAuth();
   const userId = user?.uid;

@@ -10,25 +10,31 @@ export interface PromptMetric {
   execution_count: number;
 }
 
-// The local fetcher is no longer needed.
-// SWR will use the global fetcher from AppCacheProvider.
+// FIX: Explicit fetcher to ensure Auth headers are passed correctly
+const fetcher = async (key: [string, string]): Promise<PromptMetric[]> => {
+  const [url] = key;
+  const data = await apiClient.get<PromptMetric[]>(url);
+  // Ensure we always return an array
+  return Array.isArray(data) ? data : [];
+};
 
 export function useTopPrompts() {
   const { user } = useAuth();
   const userId = user?.uid;
 
-  // API FIX: Added trailing slash
-  const endpoint = '/metrics/prompts/all/';
+  // FIX: REMOVED trailing slash. 
+  // Named sub-paths in FastAPI (like /prompts/all) usually do not want a slash.
+  const endpoint = '/metrics/prompts/all';
   
-  // CACHE KEY: Changed to the user-aware array pattern
+  // CACHE KEY: User-aware array pattern
   const key = userId ? [endpoint, userId] : null;
 
-  // SWR now uses the global fetcher
-  const { data, error } = useSWR<PromptMetric[]>(key);
+  // FIX: Pass the fetcher explicitly
+  const { data, error } = useSWR<PromptMetric[]>(key, fetcher);
 
   return {
     topPrompts: data,
-    isLoading: !error && !data && !!userId, // This logic is correct
+    isLoading: !error && !data && !!userId,
     isError: error,
   };
 }

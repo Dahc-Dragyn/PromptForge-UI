@@ -1,27 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 async function handler(req: NextRequest) {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_API_URL;
+  // 🔒 SECURITY FIX: Use private server-side variable (No NEXT_PUBLIC_)
+  const backendUrl = process.env.BACKEND_API_URL;
+  
   if (!backendUrl) {
     return new NextResponse('Backend API URL is not configured.', { status: 500 });
   }
 
+  // Strip '/api-proxy' from the path
   let requestedPath = req.nextUrl.pathname.replace(/^\/api-proxy/, '');
   
-  // --- REVERT ---
-  // The 404 error proved that /templates/compose does NOT need a trailing slash.
-  // We are reverting to the original, correct list.
   const pathsNeedingSlash = [
     '/prompts', 
     '/templates'
   ];
-  // --- END REVERT ---
 
   if (pathsNeedingSlash.includes(requestedPath)) {
     requestedPath += '/';
   }
   
-  const targetUrl = `${backendUrl}/api/promptforge/api/v1${requestedPath}${req.nextUrl.search}`;
+  // 🐛 PATH FIX: Target /api/v1 directly to match main.py
+  const targetUrl = `${backendUrl}/api/v1${requestedPath}${req.nextUrl.search}`;
   
   const headers = new Headers(req.headers);
   headers.set('host', new URL(targetUrl).host);
